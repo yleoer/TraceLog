@@ -63,9 +63,9 @@ git push origin v0.1.0
 
 workflow 会从根目录构建 Wails 应用并上传：
 
-- Windows amd64 zip，包含打包后的应用文件和 NSIS 安装器
-- Linux amd64 tarball
-- macOS universal zip
+- Windows amd64 NSIS 安装器：`.exe`
+- Linux amd64 Debian 安装包：`.deb`
+- macOS universal 磁盘镜像：`.dmg`
 
 ## 数据和配置
 

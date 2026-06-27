@@ -28,17 +28,17 @@ jobs:
             os: windows-latest
             platform: windows/amd64
             wails_args: -nsis -webview2 embed
-            archive: zip
+            package: nsis
           - artifact: linux-amd64
             os: ubuntu-22.04
             platform: linux/amd64
             wails_args: ""
-            archive: tar.gz
-          - artifact: darwin-universal
+            package: deb
+          - artifact: macos-universal
             os: macos-latest
             platform: darwin/universal
             wails_args: ""
-            archive: zip
+            package: dmg
     env:
       RELEASE_LABEL: ${{ github.ref_type == 'tag' && github.ref_name || format('run-{0}', github.run_number) }}
 
@@ -65,6 +65,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             build-essential \
+            dpkg-dev \
             libgtk-3-dev \
             libwebkit2gtk-4.0-dev \
             pkg-config
@@ -91,23 +92,83 @@ jobs:
           wails build -clean -trimpath -platform "${{ matrix.platform }}" ${{ matrix.wails_args }}
 
       - name: Package Windows artifact
-        if: matrix.archive == 'zip' && runner.os == 'Windows'
+        if: matrix.package == 'nsis' && runner.os == 'Windows'
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force release | Out-Null
-          Compress-Archive -Path build/bin/* -DestinationPath "release/TraceLog-$env:RELEASE_LABEL-${{ matrix.artifact }}.zip" -Force
+          $installer = Get-ChildItem -Path build/bin -Filter "*installer.exe" -File | Select-Object -First 1
+          if (-not $installer) {
+            Get-ChildItem -Path build/bin -Recurse | Format-Table FullName, Length
+            throw "NSIS installer was not produced."
+          }
+          Copy-Item -LiteralPath $installer.FullName -Destination "release/TraceLog-$env:RELEASE_LABEL-${{ matrix.artifact }}-installer.exe" -Force
 
       - name: Package macOS artifact
-        if: matrix.archive == 'zip' && runner.os == 'macOS'
+        if: matrix.package == 'dmg' && runner.os == 'macOS'
         run: |
-          mkdir -p release
-          ditto -c -k --sequesterRsrc build/bin "release/TraceLog-${RELEASE_LABEL}-${{ matrix.artifact }}.zip"
+          app_path="$(find build/bin -maxdepth 1 -name "*.app" -print -quit)"
+          if [ -z "$app_path" ]; then
+            find build/bin -maxdepth 2 -print
+            echo "No macOS .app bundle was produced." >&2
+            exit 1
+          fi
+          rm -rf release/dmg-root
+          mkdir -p release/dmg-root release
+          ditto "$app_path" "release/dmg-root/$(basename "$app_path")"
+          ln -s /Applications "release/dmg-root/Applications"
+          hdiutil create \
+            -volname "TraceLog" \
+            -srcfolder release/dmg-root \
+            -ov \
+            -format UDZO \
+            "release/TraceLog-${RELEASE_LABEL}-${{ matrix.artifact }}.dmg"
+          rm -rf release/dmg-root
 
       - name: Package Linux artifact
-        if: matrix.archive == 'tar.gz'
+        if: matrix.package == 'deb'
         run: |
+          binary_path="$(find build/bin -maxdepth 1 -type f -name "TraceLog*" -perm -111 -print -quit)"
+          if [ -z "$binary_path" ]; then
+            find build/bin -maxdepth 2 -print
+            echo "No Linux executable was produced." >&2
+            exit 1
+          fi
+          deb_version="${RELEASE_LABEL#v}"
+          if ! printf '%s' "$deb_version" | grep -Eq '^[0-9]'; then
+            safe_label="$(printf '%s' "$RELEASE_LABEL" | sed -E 's/[^A-Za-z0-9.+~]/./g')"
+            deb_version="0.0.0+${safe_label}"
+          fi
+          pkgroot="release/deb-root"
+          rm -rf "$pkgroot"
           mkdir -p release
-          tar -czf "release/TraceLog-${RELEASE_LABEL}-${{ matrix.artifact }}.tar.gz" -C build/bin .
+          install -Dm755 "$binary_path" "$pkgroot/usr/bin/tracelog"
+          install -Dm644 build/appicon.png "$pkgroot/usr/share/pixmaps/tracelog.png"
+          mkdir -p "$pkgroot/usr/share/applications"
+          printf '%s\n' \
+            '[Desktop Entry]' \
+            'Type=Application' \
+            'Name=TraceLog' \
+            'Comment=Personal Jira work log desktop app' \
+            'Exec=/usr/bin/tracelog' \
+            'Icon=tracelog' \
+            'Terminal=false' \
+            'Categories=Office;ProjectManagement;' \
+            > "$pkgroot/usr/share/applications/tracelog.desktop"
+          chmod 644 "$pkgroot/usr/share/applications/tracelog.desktop"
+          mkdir -p "$pkgroot/DEBIAN"
+          printf '%s\n' \
+            'Package: tracelog' \
+            "Version: ${deb_version}" \
+            'Section: utils' \
+            'Priority: optional' \
+            'Architecture: amd64' \
+            'Maintainer: yleoer <yleoer@foxmail.com>' \
+            'Depends: libgtk-3-0, libwebkit2gtk-4.0-37' \
+            'Description: TraceLog desktop work log application' \
+            ' TraceLog records Jira issue analysis, temporary tasks, daily work and weekly reports.' \
+            > "$pkgroot/DEBIAN/control"
+          dpkg-deb --build --root-owner-group "$pkgroot" "release/TraceLog-${RELEASE_LABEL}-${{ matrix.artifact }}.deb"
+          rm -rf "$pkgroot"
 
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v7
