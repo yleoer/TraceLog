@@ -1,0 +1,36 @@
+{
+  "name": "tracelog-frontend",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "vue-tsc --noEmit && vite build --configLoader runner --outDir dist/app --emptyOutDir",
+    "preview": "vite preview --host 127.0.0.1 --outDir dist/app"
+  },
+  "dependencies": {
+    "@tiptap/extension-image": "^3.27.1",
+    "@tiptap/extension-link": "^3.27.1",
+    "@tiptap/extension-placeholder": "^3.27.1",
+    "@tiptap/starter-kit": "^3.27.1",
+    "@tiptap/vue-3": "^3.27.1",
+    "@types/turndown": "^5.0.6",
+    "lucide-vue-next": "^0.561.0",
+    "markdown-it": "^14.1.0",
+    "naive-ui": "^2.43.1",
+    "turndown": "^7.2.4",
+    "vfonts": "^0.0.3",
+    "vue": "^3.5.25",
+    "vue-router": "^4.6.4"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.1",
+    "@vitejs/plugin-vue": "^6.0.2",
+    "autoprefixer": "^10.5.2",
+    "postcss": "^8.5.15",
+    "tailwindcss": "^4.3.1",
+    "typescript": "^5.9.3",
+    "vite": "^7.2.7",
+    "vue-tsc": "^3.1.8"
+  }
+}

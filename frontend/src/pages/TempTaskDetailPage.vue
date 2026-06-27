@@ -1,0 +1,218 @@
+<template>
+  <div class="space-y-6 max-w-4xl mx-auto">
+    <div class="flex items-center justify-between">
+      <h1 class="text-xl font-semibold text-gray-900">{{ isNew ? '新增临时需求' : form.title }}</h1>
+      <div class="flex items-center gap-2">
+        <n-button v-if="!isNew" size="small" @click="downloadUrl(`/export/temp-tasks/${form.id}.md`)">导出</n-button>
+        <n-popconfirm v-if="!isNew" @positive-click="removeTask">
+          <template #trigger><n-button size="small" type="error" ghost>删除</n-button></template>
+          删除后该临时需求的评论将一并移除，确认删除？
+        </n-popconfirm>
+        <n-button type="primary" size="small" :loading="saving" @click="save">保存</n-button>
+      </div>
+    </div>
+
+    <div class="card">
+      <n-form label-placement="top" size="small">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-x-4">
+          <n-form-item label="标题"><n-input v-model:value="form.title" placeholder="临时需求标题" /></n-form-item>
+          <n-form-item label="来源"><n-input v-model:value="form.source" placeholder="领导、同事、会议、线上问题..." /></n-form-item>
+          <n-form-item label="状态"><n-select v-model:value="form.status" :options="statusOptions" /></n-form-item>
+          <n-form-item label="优先级"><n-select v-model:value="form.priority" :options="priorityOptions" /></n-form-item>
+          <n-form-item label="开始时间"><n-date-picker v-model:value="schedule.startedAt" type="datetime" clearable class="w-full" /></n-form-item>
+          <n-form-item label="结束时间"><n-date-picker v-model:value="schedule.completedAt" type="datetime" clearable class="w-full" /></n-form-item>
+        </div>
+        <n-form-item label="标签"><n-dynamic-tags v-model:value="form.tags" /></n-form-item>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-x-4">
+          <n-form-item label="已转 Jira"><n-switch v-model:value="form.converted_to_jira" /></n-form-item>
+          <n-form-item label="Jira 编号"><n-input v-model:value="form.converted_jira_key" placeholder="例如 GCS-45000" /></n-form-item>
+        </div>
+      </n-form>
+    </div>
+
+    <div class="card">
+      <n-tabs type="line" animated size="small">
+        <n-tab-pane name="content" tab="内容"><MarkdownEditor v-model="form.content_md" /></n-tab-pane>
+        <n-tab-pane name="result" tab="处理结果"><MarkdownEditor v-model="form.result_md" /></n-tab-pane>
+      </n-tabs>
+    </div>
+
+    <section v-if="!isNew" class="card">
+      <h2 class="text-sm font-semibold text-gray-900 mb-4">我的记录</h2>
+      <CommentTimeline
+        :events="events"
+        :load="loadEvents"
+        :create="createComment"
+        :update="updateComment"
+        :remove="deleteComment"
+      />
+    </section>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { useMessage } from 'naive-ui'
+import { useRoute, useRouter } from 'vue-router'
+import { api, downloadUrl } from '../api/client'
+import MarkdownEditor from '../components/MarkdownEditor.vue'
+import CommentTimeline from '../components/CommentTimeline.vue'
+import type { TempTask, TempTaskEvent } from '../types'
+
+const route = useRoute()
+const router = useRouter()
+const message = useMessage()
+const saving = ref(false)
+const isNew = computed(() => !route.params.id)
+
+const events = ref<TempTaskEvent[]>([])
+
+interface TimelineEvent {
+  id: number
+  event_type: string
+  happened_at: string
+}
+
+interface TempTaskForm {
+  id: number
+  title: string
+  source: string
+  status: string
+  priority: string
+  tags: string[]
+  content_md: string
+  result_md: string
+  started_at: string
+  completed_at: string
+  converted_to_jira: boolean
+  converted_jira_key: string
+  created_at: string
+  updated_at: string
+}
+
+const form = reactive<TempTaskForm>({
+  id: 0,
+  title: '',
+  source: '',
+  status: 'todo',
+  priority: 'medium',
+  tags: [],
+  content_md: '',
+  result_md: '',
+  started_at: '',
+  completed_at: '',
+  converted_to_jira: false,
+  converted_jira_key: '',
+  created_at: '',
+  updated_at: ''
+})
+
+const schedule = reactive({
+  startedAt: null as number | null,
+  completedAt: null as number | null
+})
+
+const statusOptions = [
+  { label: '待处理', value: 'todo' },
+  { label: '处理中', value: 'processing' },
+  { label: '已完成', value: 'done' },
+  { label: '挂起', value: 'suspended' }
+]
+const priorityOptions = [
+  { label: '低', value: 'low' },
+  { label: '中', value: 'medium' },
+  { label: '高', value: 'high' },
+  { label: '紧急', value: 'urgent' }
+]
+
+async function load() {
+  if (isNew.value) return
+  try {
+    Object.assign(form, await api.getTempTask(String(route.params.id)))
+    hydrateSchedule()
+    await loadEvents()
+  } catch (error) {
+    message.error((error as Error).message)
+  }
+}
+
+async function loadEvents() {
+  if (isNew.value) return
+  events.value = await api.listTempTaskEvents(String(route.params.id))
+}
+
+async function createComment(content: string) {
+  await api.createTempTaskEvent(String(route.params.id), { event_type: 'note', content_md: content })
+}
+
+async function updateComment(event: TimelineEvent, content: string) {
+  await api.updateTempTaskEvent(event.id, { event_type: event.event_type || 'note', content_md: content, happened_at: event.happened_at })
+}
+
+async function deleteComment(event: TimelineEvent) {
+  await api.deleteTempTaskEvent(event.id)
+}
+
+async function removeTask() {
+  try {
+    await api.deleteTempTask(String(route.params.id))
+    message.success('临时需求已删除')
+    router.push('/temp-tasks')
+  } catch (error) {
+    message.error((error as Error).message)
+  }
+}
+
+async function save() {
+  if (!form.title.trim()) {
+    message.error('标题不能为空')
+    return
+  }
+  serializeSchedule()
+  saving.value = true
+  try {
+    if (isNew.value) {
+      const created = await api.createTempTask(form)
+      message.success('临时需求已创建')
+      router.push(`/temp-tasks/${created.id}`)
+    } else {
+      Object.assign(form, await api.updateTempTask(String(route.params.id), form))
+      hydrateSchedule()
+      message.success('临时需求已保存')
+    }
+  } catch (error) {
+    message.error((error as Error).message)
+  } finally {
+    saving.value = false
+  }
+}
+
+function hydrateSchedule() {
+  schedule.startedAt = parseMillis(form.started_at)
+  schedule.completedAt = parseMillis(form.completed_at)
+}
+
+function serializeSchedule() {
+  form.started_at = schedule.startedAt ? new Date(schedule.startedAt).toISOString() : ''
+  form.completed_at = schedule.completedAt ? new Date(schedule.completedAt).toISOString() : ''
+}
+
+function parseMillis(value: string) {
+  if (!value) return null
+  const timestamp = Date.parse(value)
+  return Number.isNaN(timestamp) ? null : timestamp
+}
+
+watch(() => route.params.id, load)
+onMounted(load)
+</script>
+
+<style scoped>
+.card {
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 18px 20px;
+}
+
+</style>
