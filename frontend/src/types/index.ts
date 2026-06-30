@@ -189,3 +189,16 @@ export interface UploadedImage {
   content_type: string
   size: number
 }
+
+export interface UploadedImageData {
+  url: string
+  data_url: string
+}
+
+export interface UploadedImageCleanup {
+  scanned: number
+  deleted: number
+  kept: number
+  failed: number
+  freed_bytes: number
+}

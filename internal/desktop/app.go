@@ -31,8 +31,9 @@ type App struct {
 }
 
 type FileUpload struct {
-	Name string `json:"name"`
-	Data string `json:"data"`
+	Name    string `json:"name"`
+	Data    string `json:"data"`
+	Context string `json:"context"`
 }
 
 type SaveResult struct {
@@ -158,8 +159,25 @@ func (a *App) UploadImage(file FileUpload) (service.UploadedImage, error) {
 	}
 	return a.service.SaveUploadedImage(context.Background(), service.UploadFile{
 		Filename: file.Name,
+		Context:  file.Context,
 		Reader:   bytes.NewReader(data),
 	})
+}
+
+func (a *App) GetUploadedImageDataURL(url string) (service.UploadedImageData, error) {
+	return a.service.UploadedImageDataURL(context.Background(), url)
+}
+
+func (a *App) DeleteUploadedImage(url string) (map[string]bool, error) {
+	deleted, err := a.service.DeleteUploadedImage(context.Background(), url)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]bool{"ok": true, "deleted": deleted}, nil
+}
+
+func (a *App) CleanupUnusedUploadedImages() (service.UploadedImageCleanup, error) {
+	return a.service.CleanupUnusedUploadedImages(context.Background())
 }
 
 func (a *App) ListTempTasks(filter service.TempTaskFilter) ([]service.TempTask, error) {

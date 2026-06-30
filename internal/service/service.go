@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/rand"
 	"database/sql"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -660,6 +661,7 @@ func (s *Service) UpdateSettings(ctx context.Context, input AppSettings) (AppSet
 
 type UploadFile struct {
 	Filename string
+	Context  string
 	Reader   io.Reader
 }
 
@@ -691,7 +693,7 @@ func (s *Service) SaveUploadedImage(ctx context.Context, file UploadFile) (Uploa
 	if err := os.MkdirAll(s.uploadDir, 0o755); err != nil {
 		return UploadedImage{}, fmt.Errorf("create upload directory: %w", err)
 	}
-	filename := fmt.Sprintf("%s-%s%s", time.Now().UTC().Format("20060102T150405"), randomHex(8), ext)
+	filename := uploadFilename(file.Context, file.Filename, time.Now().In(s.loc), ext)
 	if err := os.WriteFile(filepath.Join(s.uploadDir, filename), data, 0o644); err != nil {
 		return UploadedImage{}, fmt.Errorf("save uploaded image: %w", err)
 	}
@@ -701,6 +703,100 @@ func (s *Service) SaveUploadedImage(ctx context.Context, file UploadFile) (Uploa
 		ContentType: contentType,
 		Size:        int64(len(data)),
 	}, nil
+}
+
+func (s *Service) UploadedImageDataURL(ctx context.Context, url string) (UploadedImageData, error) {
+	_ = ctx
+	filename, err := uploadFilenameFromURL(url)
+	if err != nil {
+		return UploadedImageData{}, err
+	}
+	if s.uploadDir == "" {
+		return UploadedImageData{}, badRequest("upload storage is not configured")
+	}
+	data, err := os.ReadFile(filepath.Join(s.uploadDir, filename))
+	if err != nil {
+		return UploadedImageData{}, mapUploadReadError(err)
+	}
+	contentType := http.DetectContentType(data)
+	if _, ok := imageExtension(contentType); !ok {
+		return UploadedImageData{}, badRequest("file must be a png, jpeg, gif, or webp image")
+	}
+	return UploadedImageData{
+		URL:     "/uploads/" + filename,
+		DataURL: "data:" + contentType + ";base64," + base64.StdEncoding.EncodeToString(data),
+	}, nil
+}
+
+func (s *Service) DeleteUploadedImage(ctx context.Context, url string) (bool, error) {
+	filename, err := uploadFilenameFromURL(url)
+	if err != nil {
+		return false, err
+	}
+	if s.uploadDir == "" {
+		return false, badRequest("upload storage is not configured")
+	}
+	return s.deleteUploadedImageFile(ctx, filename)
+}
+
+func (s *Service) deleteUploadedImageFile(ctx context.Context, filename string) (bool, error) {
+	normalizedURL := "/uploads/" + filename
+	if referenceRepo, ok := s.repo.(interface {
+		UploadedImageReferenced(context.Context, string) (bool, error)
+	}); ok {
+		referenced, err := referenceRepo.UploadedImageReferenced(ctx, normalizedURL)
+		if err != nil {
+			return false, fmt.Errorf("check uploaded image references: %w", err)
+		}
+		if referenced {
+			return false, nil
+		}
+	}
+	if err := os.Remove(filepath.Join(s.uploadDir, filename)); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return false, fmt.Errorf("delete uploaded image: %w", err)
+	}
+	return true, nil
+}
+
+func (s *Service) CleanupUnusedUploadedImages(ctx context.Context) (UploadedImageCleanup, error) {
+	var result UploadedImageCleanup
+	if s.uploadDir == "" {
+		return result, badRequest("upload storage is not configured")
+	}
+	entries, err := os.ReadDir(s.uploadDir)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return result, nil
+		}
+		return result, fmt.Errorf("read upload directory: %w", err)
+	}
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		filename := entry.Name()
+		if !isUploadedImageFilename(filename) {
+			continue
+		}
+		result.Scanned++
+		info, statErr := entry.Info()
+		if statErr != nil {
+			result.Failed++
+			continue
+		}
+		deleted, deleteErr := s.deleteUploadedImageFile(ctx, filename)
+		if deleteErr != nil {
+			result.Failed++
+			continue
+		}
+		if deleted {
+			result.Deleted++
+			result.FreedBytes += info.Size()
+			continue
+		}
+		result.Kept++
+	}
+	return result, nil
 }
 
 func (s *Service) GenerateIssueSummary(ctx context.Context, jiraKey string) (IssueSummaryResponse, error) {
@@ -1290,6 +1386,70 @@ func imageExtension(contentType string) (string, bool) {
 	default:
 		return "", false
 	}
+}
+
+func uploadFilenameFromURL(url string) (string, error) {
+	name := strings.TrimPrefix(strings.TrimSpace(url), "/uploads/")
+	if name == "" || name == url || strings.Contains(name, "/") || strings.Contains(name, "\\") {
+		return "", badRequest("invalid upload url")
+	}
+	return name, nil
+}
+
+func isUploadedImageFilename(filename string) bool {
+	if filename != filepath.Base(filename) {
+		return false
+	}
+	switch strings.ToLower(filepath.Ext(filename)) {
+	case ".png", ".jpg", ".jpeg", ".gif", ".webp":
+		return true
+	default:
+		return false
+	}
+}
+
+func uploadFilename(context string, originalFilename string, uploadedAt time.Time, ext string) string {
+	prefix := uploadContextSlug(context)
+	if prefix == "" {
+		prefix = "upload"
+	}
+	base := uploadBaseName(originalFilename)
+	original := uploadContextSlug(strings.TrimSuffix(base, filepath.Ext(base)))
+	if original == "" {
+		return fmt.Sprintf("%s-%s-%s%s", prefix, uploadedAt.Format("20060102T150405"), randomHex(4), ext)
+	}
+	return fmt.Sprintf("%s-%s-%s-%s%s", prefix, uploadedAt.Format("20060102T150405"), original, randomHex(4), ext)
+}
+
+func uploadBaseName(filename string) string {
+	filename = strings.TrimSpace(strings.ReplaceAll(filename, "\\", "/"))
+	return filepath.Base(filename)
+}
+
+func uploadContextSlug(context string) string {
+	context = strings.ToLower(strings.TrimSpace(context))
+	var b strings.Builder
+	lastDash := false
+	for _, r := range context {
+		isToken := r >= 'a' && r <= 'z' || r >= '0' && r <= '9'
+		if isToken {
+			b.WriteRune(r)
+			lastDash = false
+			continue
+		}
+		if b.Len() > 0 && !lastDash {
+			b.WriteByte('-')
+			lastDash = true
+		}
+	}
+	return strings.Trim(b.String(), "-")
+}
+
+func mapUploadReadError(err error) error {
+	if errors.Is(err, os.ErrNotExist) {
+		return &AppError{Code: http.StatusNotFound, Message: "uploaded image not found", Err: ErrNotFound}
+	}
+	return fmt.Errorf("read uploaded image: %w", err)
 }
 
 func randomHex(bytesCount int) string {

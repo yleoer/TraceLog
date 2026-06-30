@@ -3,6 +3,8 @@
 import {service} from '../models';
 import {desktop} from '../models';
 
+export function CleanupUnusedUploadedImages():Promise<service.UploadedImageCleanup>;
+
 export function CreateDayEntry(arg1:service.DayEntry):Promise<service.DayEntry>;
 
 export function CreateIssue(arg1:service.Issue):Promise<service.Issue>;
@@ -29,6 +31,8 @@ export function DeleteTempTask(arg1:number):Promise<Record<string, boolean>>;
 
 export function DeleteTempTaskEvent(arg1:number):Promise<Record<string, boolean>>;
 
+export function DeleteUploadedImage(arg1:string):Promise<Record<string, boolean>>;
+
 export function ExportIssueMarkdown(arg1:string):Promise<desktop.SaveResult>;
 
 export function ExportJSON():Promise<desktop.SaveResult>;
@@ -50,6 +54,8 @@ export function GetIssue(arg1:string):Promise<service.Issue>;
 export function GetSettings():Promise<service.AppSettings>;
 
 export function GetTempTask(arg1:number):Promise<service.TempTask>;
+
+export function GetUploadedImageDataURL(arg1:string):Promise<service.UploadedImageData>;
 
 export function GetWeek(arg1:string):Promise<service.WeekView>;
 

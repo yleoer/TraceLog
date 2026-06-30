@@ -82,17 +82,33 @@
       </div>
       <p class="text-xs text-gray-400">桌面版数据默认保存在系统用户配置目录的 TraceLog 文件夹中；备份该目录即可保留 SQLite 数据库、设置和上传图片。</p>
     </div>
+
+    <div class="card">
+      <div class="flex items-center justify-between gap-4">
+        <div>
+          <h2 class="card-title mb-1">图片清理</h2>
+          <p class="text-xs text-gray-400">删除上传目录中未被任何记录引用的图片，已引用图片会保留。</p>
+        </div>
+        <n-popconfirm @positive-click="cleanupImages">
+          <template #trigger>
+            <n-button size="small" :loading="cleaningImages">清理多余图片</n-button>
+          </template>
+          清理只会删除未被 Markdown 引用的上传图片，确认继续？
+        </n-popconfirm>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
-import { useMessage } from 'naive-ui'
+import { NPopconfirm, useMessage } from 'naive-ui'
 import { api, downloadUrl } from '../api/client'
 import type { AppSettings } from '../types'
 
 const message = useMessage()
 const saving = ref(false)
+const cleaningImages = ref(false)
 
 const form = reactive<AppSettings>({
   jira: { base_url: '', email: '', api_token: '', has_api_token: false },
@@ -130,6 +146,29 @@ function clearSecrets() {
   form.jira.api_token = ''
   form.openai.api_key = ''
   form.deepseek.api_key = ''
+}
+
+async function cleanupImages() {
+  cleaningImages.value = true
+  try {
+    const result = await api.cleanupUnusedUploadedImages()
+    const freed = formatBytes(result.freed_bytes)
+    if (result.failed > 0) {
+      message.warning(`已删除 ${result.deleted} 张多余图片，释放 ${freed}；${result.failed} 个文件清理失败`)
+      return
+    }
+    message.success(`已删除 ${result.deleted} 张多余图片，释放 ${freed}；保留 ${result.kept} 张仍在使用的图片`)
+  } catch (error) {
+    message.error((error as Error).message)
+  } finally {
+    cleaningImages.value = false
+  }
+}
+
+function formatBytes(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`
 }
 
 onMounted(loadSettings)

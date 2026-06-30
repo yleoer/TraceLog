@@ -25,17 +25,24 @@
       </n-popconfirm>
     </div>
 
-    <div class="flex items-center gap-2 mt-2">
-      <n-input v-model:value="draft" size="small" placeholder="给这一天加一条手记..." @keyup.enter="addEntry" />
-      <n-button size="small" :loading="saving" @click="addEntry">添加</n-button>
+    <div v-if="entryEditorVisible" class="entry-editor mt-3">
+      <MarkdownEditor ref="entryEditor" v-model="draft" :rows="4" :upload-context="`day-${day.date}-entry`" placeholder="给这一天加一条手记..." />
+      <div class="flex justify-end gap-2 mt-2">
+        <n-button size="small" @click="cancelEntry">取消</n-button>
+        <n-button size="small" type="primary" :loading="saving" @click="addEntry">添加</n-button>
+      </div>
+    </div>
+    <div v-else class="flex justify-end mt-3">
+      <n-button size="small" @click="showEntryEditor">添加手记</n-button>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref } from 'vue'
-import { NButton, NInput, NPopconfirm, useMessage } from 'naive-ui'
+import { NButton, NPopconfirm, useMessage } from 'naive-ui'
 import { useRouter } from 'vue-router'
+import MarkdownEditor from './MarkdownEditor.vue'
 import MarkdownView from './MarkdownView.vue'
 import { api } from '../api/client'
 import { formatTime } from '../utils/datetime'
@@ -47,24 +54,37 @@ const router = useRouter()
 const message = useMessage()
 const draft = ref('')
 const saving = ref(false)
+const entryEditorVisible = ref(false)
+const entryEditor = ref<MarkdownEditorExpose | null>(null)
 
 function goTo(url: string) {
   router.push(url)
 }
 
 async function addEntry() {
+  entryEditor.value?.flush()
   const content = draft.value.trim()
   if (!content) return
   saving.value = true
   try {
     await api.createDayEntry({ date: props.day.date, content_md: content })
     draft.value = ''
+    entryEditorVisible.value = false
     emit('changed')
   } catch (error) {
     message.error((error as Error).message)
   } finally {
     saving.value = false
   }
+}
+
+function showEntryEditor() {
+  entryEditorVisible.value = true
+}
+
+function cancelEntry() {
+  draft.value = ''
+  entryEditorVisible.value = false
 }
 
 async function removeEntry(entry: DayEntry) {
@@ -74,6 +94,10 @@ async function removeEntry(entry: DayEntry) {
   } catch (error) {
     message.error((error as Error).message)
   }
+}
+
+type MarkdownEditorExpose = {
+  flush: () => string
 }
 </script>
 
@@ -134,5 +158,10 @@ async function removeEntry(entry: DayEntry) {
   background: #fff7ed;
   color: #ea580c;
   margin-top: 2px;
+}
+
+.entry-editor {
+  border-top: 1px solid #eef0f3;
+  padding-top: 12px;
 }
 </style>

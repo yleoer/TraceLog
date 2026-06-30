@@ -1,50 +1,59 @@
 <template>
-  <div class="space-y-6 max-w-4xl mx-auto">
-    <div class="flex items-center justify-between">
-      <h1 class="text-xl font-semibold text-gray-900">{{ isNew ? '新增临时需求' : form.title }}</h1>
-      <div class="flex items-center gap-2">
-        <n-button v-if="!isNew" size="small" @click="downloadUrl(`/export/temp-tasks/${form.id}.md`)">导出</n-button>
-        <n-popconfirm v-if="!isNew" @positive-click="removeTask">
-          <template #trigger><n-button size="small" type="error" ghost>删除</n-button></template>
-          删除后该临时需求的评论将一并移除，确认删除？
-        </n-popconfirm>
-        <n-button type="primary" size="small" :loading="saving" @click="save">保存</n-button>
+  <n-spin :show="loading">
+    <div class="space-y-6 max-w-4xl mx-auto">
+      <div class="flex items-center justify-between">
+        <h1 class="text-xl font-semibold text-gray-900">{{ isNew ? '新增临时需求' : form.title }}</h1>
+        <div class="flex items-center gap-2">
+          <n-button v-if="!isNew" size="small" @click="downloadUrl(`/export/temp-tasks/${form.id}.md`)">导出</n-button>
+          <n-popconfirm v-if="!isNew" @positive-click="removeTask">
+            <template #trigger><n-button size="small" type="error" ghost>删除</n-button></template>
+            删除后该临时需求的评论将一并移除，确认删除？
+          </n-popconfirm>
+          <n-button type="primary" size="small" :loading="saving" @click="save">保存</n-button>
+        </div>
       </div>
-    </div>
 
-    <div class="card">
-      <n-form label-placement="top" size="small">
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-x-4">
-          <n-form-item label="标题"><n-input v-model:value="form.title" placeholder="临时需求标题" /></n-form-item>
-          <n-form-item label="来源"><n-input v-model:value="form.source" placeholder="领导、同事、会议、线上问题..." /></n-form-item>
-          <n-form-item label="状态"><n-select v-model:value="form.status" :options="statusOptions" /></n-form-item>
-          <n-form-item label="优先级"><n-select v-model:value="form.priority" :options="priorityOptions" /></n-form-item>
-          <n-form-item label="开始时间"><n-date-picker v-model:value="schedule.startedAt" type="datetime" clearable class="w-full" /></n-form-item>
-          <n-form-item label="结束时间"><n-date-picker v-model:value="schedule.completedAt" type="datetime" clearable class="w-full" /></n-form-item>
-        </div>
-        <n-form-item label="标签"><n-dynamic-tags v-model:value="form.tags" /></n-form-item>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-x-4">
-          <n-form-item label="已转 Jira"><n-switch v-model:value="form.converted_to_jira" /></n-form-item>
-          <n-form-item label="Jira 编号"><n-input v-model:value="form.converted_jira_key" placeholder="例如 GCS-45000" /></n-form-item>
-        </div>
-      </n-form>
-    </div>
+      <div class="card">
+        <n-form label-placement="top" size="small">
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-x-4">
+            <n-form-item label="标题"><n-input v-model:value="form.title" placeholder="临时需求标题" /></n-form-item>
+            <n-form-item label="来源"><n-input v-model:value="form.source" placeholder="领导、同事、会议、线上问题..." /></n-form-item>
+            <n-form-item label="状态"><n-select v-model:value="form.status" :options="statusOptions" /></n-form-item>
+            <n-form-item label="优先级"><n-select v-model:value="form.priority" :options="priorityOptions" /></n-form-item>
+            <n-form-item label="开始时间"><n-date-picker v-model:value="schedule.startedAt" type="datetime" clearable class="w-full" /></n-form-item>
+            <n-form-item label="结束时间"><n-date-picker v-model:value="schedule.completedAt" type="datetime" clearable class="w-full" /></n-form-item>
+          </div>
+          <n-form-item label="标签"><n-dynamic-tags v-model:value="form.tags" /></n-form-item>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-x-4">
+            <n-form-item label="已转 Jira"><n-switch v-model:value="form.converted_to_jira" /></n-form-item>
+            <n-form-item label="Jira 编号"><n-input v-model:value="form.converted_jira_key" placeholder="例如 GCS-45000" /></n-form-item>
+          </div>
+        </n-form>
+      </div>
 
-    <div class="card">
-      <MarkdownEditor v-model="form.content_md" />
-    </div>
+      <div class="card">
+        <MarkdownEditor
+          v-if="editorVisible"
+          ref="contentEditor"
+          v-model="form.content_md"
+          :upload-context="tempTaskUploadContext('content')"
+          placeholder="记录临时需求的背景、处理过程和后续事项..."
+        />
+      </div>
 
-    <section v-if="!isNew" class="card">
-      <h2 class="text-sm font-semibold text-gray-900 mb-4">我的记录</h2>
-      <CommentTimeline
-        :events="events"
-        :load="loadEvents"
-        :create="createComment"
-        :update="updateComment"
-        :remove="deleteComment"
-      />
-    </section>
-  </div>
+      <section v-if="!isNew" class="card">
+        <h2 class="text-sm font-semibold text-gray-900 mb-4">我的记录</h2>
+        <CommentTimeline
+          :events="events"
+          :load="loadEvents"
+          :create="createComment"
+          :update="updateComment"
+          :remove="deleteComment"
+          :upload-context="tempTaskUploadContext('timeline')"
+        />
+      </section>
+    </div>
+  </n-spin>
 </template>
 
 <script setup lang="ts">
@@ -59,8 +68,12 @@ import type { TempTask, TempTaskEvent } from '../types'
 const route = useRoute()
 const router = useRouter()
 const message = useMessage()
+const loading = ref(false)
 const saving = ref(false)
 const isNew = computed(() => !route.params.id)
+const editorVisible = computed(() => isNew.value || !loading.value)
+const contentEditor = ref<MarkdownEditorExpose | null>(null)
+let loadToken = 0
 
 const events = ref<TempTaskEvent[]>([])
 
@@ -107,6 +120,22 @@ const schedule = reactive({
   completedAt: null as number | null
 })
 
+const emptyForm: TempTaskForm = {
+  id: 0,
+  title: '',
+  source: '',
+  status: 'todo',
+  priority: 'medium',
+  tags: [],
+  content_md: '',
+  started_at: '',
+  completed_at: '',
+  converted_to_jira: false,
+  converted_jira_key: '',
+  created_at: '',
+  updated_at: ''
+}
+
 const statusOptions = [
   { label: '待处理', value: 'todo' },
   { label: '处理中', value: 'processing' },
@@ -121,19 +150,30 @@ const priorityOptions = [
 ]
 
 async function load() {
-  if (isNew.value) return
+  const token = ++loadToken
+  const id = route.params.id
+  if (!id) {
+    resetForm()
+    return
+  }
+  loading.value = true
   try {
-    Object.assign(form, await api.getTempTask(String(route.params.id)))
+    const task = await api.getTempTask(String(id))
+    if (token !== loadToken) return
+    Object.assign(form, task)
     hydrateSchedule()
-    await loadEvents()
+    await loadEvents(String(id))
   } catch (error) {
+    if (token !== loadToken) return
     message.error((error as Error).message)
+  } finally {
+    if (token === loadToken) loading.value = false
   }
 }
 
-async function loadEvents() {
-  if (isNew.value) return
-  events.value = await api.listTempTaskEvents(String(route.params.id))
+async function loadEvents(id = String(route.params.id || '')) {
+  if (!id) return
+  events.value = await api.listTempTaskEvents(id)
 }
 
 async function createComment(content: string) {
@@ -159,6 +199,7 @@ async function removeTask() {
 }
 
 async function save() {
+  contentEditor.value?.flush()
   if (!form.title.trim()) {
     message.error('标题不能为空')
     return
@@ -198,8 +239,23 @@ function parseMillis(value: string) {
   return Number.isNaN(timestamp) ? null : timestamp
 }
 
+function tempTaskUploadContext(part: string) {
+  return `temp-task-${form.id || route.params.id || 'new'}-${part}`
+}
+
+function resetForm() {
+  Object.assign(form, { ...emptyForm, tags: [] })
+  events.value = []
+  schedule.startedAt = null
+  schedule.completedAt = null
+}
+
 watch(() => route.params.id, load)
 onMounted(load)
+
+type MarkdownEditorExpose = {
+  flush: () => string
+}
 </script>
 
 <style scoped>

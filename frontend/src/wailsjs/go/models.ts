@@ -3,6 +3,7 @@ export namespace desktop {
 	export class FileUpload {
 	    name: string;
 	    data: string;
+	    context: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new FileUpload(source);
@@ -12,6 +13,7 @@ export namespace desktop {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.name = source["name"];
 	        this.data = source["data"];
+	        this.context = source["context"];
 	    }
 	}
 	export class SaveResult {
@@ -682,7 +684,39 @@ export namespace service {
 	        this.size = source["size"];
 	    }
 	}
-	
+	export class UploadedImageCleanup {
+	    scanned: number;
+	    deleted: number;
+	    kept: number;
+	    failed: number;
+	    freed_bytes: number;
+
+	    static createFrom(source: any = {}) {
+	        return new UploadedImageCleanup(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.scanned = source["scanned"];
+	        this.deleted = source["deleted"];
+	        this.kept = source["kept"];
+	        this.failed = source["failed"];
+	        this.freed_bytes = source["freed_bytes"];
+	    }
+	}
+	export class UploadedImageData {
+	    url: string;
+	    data_url: string;
+
+	    static createFrom(source: any = {}) {
+	        return new UploadedImageData(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.url = source["url"];
+	        this.data_url = source["data_url"];
+	    }
+	}
 
 }
-

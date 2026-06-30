@@ -80,19 +80,42 @@
 
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
         <div class="card">
-          <h3 class="card-title">周总结</h3>
-          <MarkdownEditor v-model="summary" />
+          <div class="flex items-center justify-between gap-2 mb-3">
+            <h3 class="card-title !mb-0">周总结</h3>
+            <n-button size="tiny" @click="summaryEditorVisible = !summaryEditorVisible">{{ summaryEditorVisible ? '收起编辑' : '编辑' }}</n-button>
+          </div>
+          <MarkdownEditor
+            v-if="summaryEditorVisible"
+            ref="summaryEditor"
+            v-model="summary"
+            :upload-context="`week-${week}-summary`"
+            placeholder="整理本周完成事项、关键过程和结果..."
+          />
+          <MarkdownView v-else-if="summary" :content="summary" />
+          <div v-else class="empty">暂无周总结</div>
         </div>
         <div class="card">
-          <h3 class="card-title">下周计划</h3>
-          <MarkdownEditor v-model="nextPlan" />
+          <div class="flex items-center justify-between gap-2 mb-3">
+            <h3 class="card-title !mb-0">下周计划</h3>
+            <n-button size="tiny" @click="nextPlanEditorVisible = !nextPlanEditorVisible">{{ nextPlanEditorVisible ? '收起编辑' : '编辑' }}</n-button>
+          </div>
+          <MarkdownEditor
+            v-if="nextPlanEditorVisible"
+            ref="nextPlanEditor"
+            v-model="nextPlan"
+            :upload-context="`week-${week}-next-plan`"
+            placeholder="记录下周计划、风险和待跟进事项..."
+          />
+          <MarkdownView v-else-if="nextPlan" :content="nextPlan" />
+          <div v-else class="empty">暂无下周计划</div>
         </div>
       </div>
 
       <div class="card mt-4">
         <h3 class="card-title">本周每天</h3>
+        <div v-if="visibleDays.length === 0" class="empty">暂无已过去的日期</div>
         <div class="space-y-4">
-          <DayWorkPanel v-for="d in view?.days ?? []" :key="d.date" :day="d" @changed="load" />
+          <DayWorkPanel v-for="d in visibleDays" :key="d.date" :day="d" @changed="load" />
         </div>
       </div>
     </n-spin>
@@ -100,7 +123,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useMessage } from 'naive-ui'
 import { useRoute, useRouter } from 'vue-router'
 import { api, downloadUrl } from '../api/client'
@@ -123,6 +146,11 @@ const weekOptions = ref<{ label: string; value: string }[]>([])
 const view = ref<WeekView>()
 const summary = ref('')
 const nextPlan = ref('')
+const summaryEditorVisible = ref(false)
+const nextPlanEditorVisible = ref(false)
+const summaryEditor = ref<MarkdownEditorExpose | null>(null)
+const nextPlanEditor = ref<MarkdownEditorExpose | null>(null)
+const visibleDays = computed(() => (view.value?.days ?? []).filter((day) => day.date <= todayDate()))
 
 async function load() {
   const normalized = normalizeWeek(week.value)
@@ -136,6 +164,8 @@ async function load() {
     view.value = await api.getWeek(week.value)
     summary.value = view.value.log.summary_md
     nextPlan.value = view.value.log.next_plan_md
+    summaryEditorVisible.value = false
+    nextPlanEditorVisible.value = false
     if (route.params.week !== week.value) router.replace(`/weeks/${week.value}`)
   } catch (error) {
     message.error((error as Error).message)
@@ -158,6 +188,8 @@ async function loadWeekOptions() {
 }
 
 async function save() {
+  summaryEditor.value?.flush()
+  nextPlanEditor.value?.flush()
   try {
     await api.updateWeek(week.value, { summary_md: summary.value, next_plan_md: nextPlan.value })
     message.success('周记录已保存')
@@ -259,6 +291,14 @@ function formatDate(value: string) {
   return formatDateTime(value)
 }
 
+function todayDate() {
+  const now = new Date()
+  const year = now.getFullYear()
+  const month = String(now.getMonth() + 1).padStart(2, '0')
+  const day = String(now.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
 watch(() => route.params.week, (value) => {
   if (value) {
     week.value = String(value)
@@ -269,6 +309,10 @@ onMounted(async () => {
   await loadWeekOptions()
   await load()
 })
+
+type MarkdownEditorExpose = {
+  flush: () => string
+}
 </script>
 
 <style scoped>

@@ -121,6 +121,7 @@
         :create="createComment"
         :update="updateComment"
         :remove="deleteComment"
+        :upload-context="issueUploadContext('timeline')"
       >
         <div class="border-b border-gray-100 pb-5 mb-5">
           <div class="flex items-center justify-between mb-2">
@@ -442,6 +443,10 @@ function parseMillis(value: string) {
 function formatDateTime(value: string) {
   if (!value) return '保存后生成'
   return sharedFormatDateTime(value)
+}
+
+function issueUploadContext(part: string) {
+  return `issue-${form.jira_key || route.params.jiraKey || 'new'}-${part}`
 }
 
 watch(() => route.params.jiraKey, load)

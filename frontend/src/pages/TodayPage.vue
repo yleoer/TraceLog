@@ -50,7 +50,7 @@
 
       <div class="card mt-4">
         <h2 class="card-title">周报草稿片段</h2>
-        <MarkdownEditor v-model="draft" />
+        <MarkdownEditor v-model="draft" :upload-context="`today-${data?.date || 'draft'}-weekly-draft`" placeholder="编辑今日生成的周报草稿片段..." />
       </div>
     </n-spin>
   </div>

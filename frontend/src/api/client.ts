@@ -10,7 +10,9 @@ import type {
   TempTask,
   TempTaskEvent,
   TodayWorkflow,
+  UploadedImageData,
   UploadedImage,
+  UploadedImageCleanup,
   WeekView,
   WeeklyLog
 } from '../types'
@@ -95,9 +97,9 @@ async function fileToDataURL(file: File) {
   })
 }
 
-async function uploadImage(file: File) {
+async function uploadImage(file: File, context = '') {
   const data = await fileToDataURL(file)
-  return nativeCall(() => DesktopApp.UploadImage(desktop.FileUpload.createFrom({ name: file.name, data }))) as Promise<UploadedImage>
+  return nativeCall(() => DesktopApp.UploadImage(desktop.FileUpload.createFrom({ name: file.name, data, context }))) as Promise<UploadedImage>
 }
 
 export const api = {
@@ -127,6 +129,9 @@ export const api = {
     nativeCall(() => DesktopApp.UpdateIssueTodo(id, service.IssueTodo.createFrom(todo))) as Promise<IssueTodo>,
   deleteIssueTodo: (id: number) => nativeCall(() => DesktopApp.DeleteIssueTodo(id)) as Promise<OkResponse>,
   uploadImage,
+  getUploadedImageDataURL: (url: string) => nativeCall(() => DesktopApp.GetUploadedImageDataURL(url)) as Promise<UploadedImageData>,
+  deleteUploadedImage: (url: string) => nativeCall(() => DesktopApp.DeleteUploadedImage(url)) as Promise<OkResponse>,
+  cleanupUnusedUploadedImages: () => nativeCall(() => DesktopApp.CleanupUnusedUploadedImages()) as Promise<UploadedImageCleanup>,
   listTempTasks: (params: QueryParams) =>
     nativeCall(() => DesktopApp.ListTempTasks(service.TempTaskFilter.createFrom(tempTaskFilter(params)))) as Promise<TempTask[]>,
   createTempTask: (task: Partial<TempTask>) => nativeCall(() => DesktopApp.CreateTempTask(service.TempTask.createFrom(task))) as Promise<TempTask>,

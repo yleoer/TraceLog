@@ -110,6 +110,28 @@ func TestSearchResultURLsPointToDetailPages(t *testing.T) {
 	}
 }
 
+func TestUploadedImageReferencedFindsMarkdownReferences(t *testing.T) {
+	store := newTestStore(t)
+	uploadURL := "/uploads/20260630T120000-test.png"
+	insertTestIssue(t, store.db, "GCS-1", "In Progress", `[]`, "![note]("+uploadURL+")")
+
+	referenced, err := store.UploadedImageReferenced(context.Background(), uploadURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !referenced {
+		t.Fatal("expected uploaded image to be referenced")
+	}
+
+	referenced, err = store.UploadedImageReferenced(context.Background(), "/uploads/missing.png")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if referenced {
+		t.Fatal("expected missing upload url to be unreferenced")
+	}
+}
+
 func newTestStore(t *testing.T) *Store {
 	t.Helper()
 	db, err := sql.Open("sqlite", ":memory:")
@@ -185,6 +207,21 @@ CREATE TABLE temp_task_events (
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   FOREIGN KEY (temp_task_id) REFERENCES temp_tasks(id) ON DELETE CASCADE
+);
+CREATE TABLE weekly_logs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  week TEXT NOT NULL UNIQUE,
+  summary_md TEXT NOT NULL DEFAULT '',
+  next_plan_md TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE TABLE day_entries (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  date TEXT NOT NULL,
+  content_md TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
 );`
 	if _, err := db.Exec(schema); err != nil {
 		t.Fatal(err)

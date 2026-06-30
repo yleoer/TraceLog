@@ -127,6 +127,33 @@ func (s *Store) DeleteIssue(ctx context.Context, jiraKey string) error {
 	return s.DeleteSearchIndex(ctx, "issue", issue.JiraKey)
 }
 
+func (s *Store) UploadedImageReferenced(ctx context.Context, url string) (bool, error) {
+	like := "%" + url + "%"
+	queries := []string{
+		`SELECT 1 FROM issues WHERE summary_md LIKE ? OR background_md LIKE ? OR analysis_md LIKE ? OR solution_md LIKE ? OR actions_md LIKE ? OR result_md LIKE ? OR todo_md LIKE ? LIMIT 1`,
+		`SELECT 1 FROM issue_events WHERE content_md LIKE ? LIMIT 1`,
+		`SELECT 1 FROM temp_tasks WHERE content_md LIKE ? LIMIT 1`,
+		`SELECT 1 FROM temp_task_events WHERE content_md LIKE ? LIMIT 1`,
+		`SELECT 1 FROM weekly_logs WHERE summary_md LIKE ? OR next_plan_md LIKE ? LIMIT 1`,
+		`SELECT 1 FROM day_entries WHERE content_md LIKE ? LIMIT 1`,
+	}
+	for _, query := range queries {
+		args := make([]any, strings.Count(query, "?"))
+		for index := range args {
+			args[index] = like
+		}
+		var found int
+		err := s.db.QueryRowContext(ctx, query, args...).Scan(&found)
+		if err == nil {
+			return true, nil
+		}
+		if err != sql.ErrNoRows {
+			return false, err
+		}
+	}
+	return false, nil
+}
+
 func (s *Store) ListIssueTodos(ctx context.Context, issueID int64, includeDone bool) ([]service.IssueTodo, error) {
 	query := `SELECT t.id, t.issue_id, i.jira_key, t.content, t.due_at, t.done, t.created_at, t.updated_at FROM issue_todos t JOIN issues i ON i.id = t.issue_id WHERE t.issue_id = ?`
 	args := []any{issueID}

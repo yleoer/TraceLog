@@ -1,429 +1,440 @@
 <template>
-  <div class="rich-editor" :style="{ '--editor-min-height': `${rows * 24}px` }">
-    <div v-if="editor" class="editor-toolbar">
-      <n-tooltip v-for="action in actions" :key="action.key" trigger="hover">
-        <template #trigger>
-          <n-button
-            size="small"
-            quaternary
-            :type="action.active() ? 'primary' : 'default'"
-            :disabled="action.disabled?.()"
-            @click="action.run"
-          >
-            <template #icon>
-              <component :is="action.icon" :size="16" />
-            </template>
-          </n-button>
-        </template>
-        {{ action.label }}
-      </n-tooltip>
-
-      <span class="toolbar-divider" />
-
-      <n-tooltip trigger="hover">
-        <template #trigger>
-          <n-button size="small" quaternary :loading="uploading" @click="pickImage">
-            <template #icon>
-              <ImageIcon :size="16" />
-            </template>
-          </n-button>
-        </template>
-        上传图片
-      </n-tooltip>
-      <input ref="fileInput" class="file-input" type="file" accept="image/*" @change="uploadImage" />
-    </div>
-
-    <EditorContent class="editor-surface" :editor="editor" />
+  <div class="markdown-editor" :style="{ '--editor-min-height': `${rows * 24}px` }">
+    <div ref="editorElement" class="vditor-host" />
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { EditorContent, useEditor } from '@tiptap/vue-3'
-import StarterKit from '@tiptap/starter-kit'
-import Image from '@tiptap/extension-image'
-import Link from '@tiptap/extension-link'
-import Placeholder from '@tiptap/extension-placeholder'
-import MarkdownIt from 'markdown-it'
-import TurndownService from 'turndown'
-import {
-  Bold,
-  Code,
-  Heading2,
-  Image as ImageIcon,
-  Italic,
-  Link2,
-  List,
-  ListOrdered,
-  Quote,
-  Redo2,
-  Undo2
-} from 'lucide-vue-next'
+import { nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
+import Vditor from 'vditor'
+import 'vditor/dist/index.css'
 import { useMessage } from 'naive-ui'
 import { api } from '../api/client'
 
-const props = withDefaults(defineProps<{ modelValue: string; rows?: number }>(), {
-  rows: 8
+type EditorMode = 'wysiwyg' | 'sv' | 'ir'
+
+const props = withDefaults(defineProps<{ modelValue: string; rows?: number; placeholder?: string; uploadContext?: string }>(), {
+  rows: 8,
+  placeholder: '记录进展、分析、结论...',
+  uploadContext: ''
 })
 
 const emit = defineEmits<{ 'update:modelValue': [value: string] }>()
 const message = useMessage()
-const fileInput = ref<HTMLInputElement | null>(null)
-const uploading = ref(false)
+const editorElement = ref<HTMLDivElement | null>(null)
+const editor = shallowRef<Vditor | null>(null)
+const mounted = ref(false)
+const editorReady = ref(false)
 const syncing = ref(false)
+const settingValue = ref(false)
+const pendingMarkdown = ref<string | null>(null)
+const uploadBlobByURL = new Map<string, string>()
+const uploadBlobPromiseByURL = new Map<string, Promise<string>>()
+const uploadURLByBlob = new Map<string, string>()
+const sessionUploadedURLs = new Set<string>()
+const cleanupTimers = new Map<string, number>()
 
-const md = new MarkdownIt({
-  html: false,
-  linkify: true,
-  breaks: true
-})
+defineExpose({ flush })
 
-const turndown = new TurndownService({
-  headingStyle: 'atx',
-  bulletListMarker: '-',
-  codeBlockStyle: 'fenced'
-})
-
-const editor = useEditor({
-  content: markdownToHtml(props.modelValue),
-  extensions: [
-    StarterKit.configure({
-      heading: { levels: [2, 3] }
-    }),
-    Link.configure({
-      autolink: true,
-      defaultProtocol: 'https',
-      openOnClick: false
-    }),
-    Image.configure({
-      allowBase64: false,
-      inline: false
-    }),
-    Placeholder.configure({
-      placeholder: '记录进展、分析、结论...'
-    })
-  ],
-  editorProps: {
-    attributes: {
-      class: 'editor-content'
-    },
-    handlePaste: (_view, event) => {
-      const files = imageFilesFromClipboard(event)
-      if (files.length === 0) return false
+const toolbar = [
+  'headings',
+  'bold',
+  'italic',
+  'strike',
+  'link',
+  '|',
+  'list',
+  'ordered-list',
+  'check',
+  '|',
+  'quote',
+  'code',
+  'inline-code',
+  'table',
+  '|',
+  'upload',
+  '|',
+  'undo',
+  'redo',
+  '|',
+  {
+    name: 'source-mode',
+    tip: '切换源码模式 Ctrl + /',
+    icon: '<svg><use xlink:href="#vditor-icon-code"></use></svg>',
+    click: (event: Event) => {
       event.preventDefault()
-      void insertImages(files)
-      return true
+      toggleEditMode()
     }
   },
-  onUpdate: ({ editor }) => {
-    if (syncing.value) return
-    emit('update:modelValue', htmlToMarkdown(editor.getHTML()))
-  }
-})
-
-const actions = computed(() => {
-  const current = editor.value
-  if (!current) return []
-  return [
-    {
-      key: 'bold',
-      label: '加粗',
-      icon: Bold,
-      active: () => current.isActive('bold'),
-      run: () => current.chain().focus().toggleBold().run()
-    },
-    {
-      key: 'italic',
-      label: '斜体',
-      icon: Italic,
-      active: () => current.isActive('italic'),
-      run: () => current.chain().focus().toggleItalic().run()
-    },
-    {
-      key: 'heading',
-      label: '标题',
-      icon: Heading2,
-      active: () => current.isActive('heading', { level: 2 }),
-      run: () => current.chain().focus().toggleHeading({ level: 2 }).run()
-    },
-    {
-      key: 'bullet',
-      label: '无序列表',
-      icon: List,
-      active: () => current.isActive('bulletList'),
-      run: () => current.chain().focus().toggleBulletList().run()
-    },
-    {
-      key: 'ordered',
-      label: '有序列表',
-      icon: ListOrdered,
-      active: () => current.isActive('orderedList'),
-      run: () => current.chain().focus().toggleOrderedList().run()
-    },
-    {
-      key: 'quote',
-      label: '引用',
-      icon: Quote,
-      active: () => current.isActive('blockquote'),
-      run: () => current.chain().focus().toggleBlockquote().run()
-    },
-    {
-      key: 'code',
-      label: '代码块',
-      icon: Code,
-      active: () => current.isActive('codeBlock'),
-      run: () => current.chain().focus().toggleCodeBlock().run()
-    },
-    {
-      key: 'link',
-      label: '链接',
-      icon: Link2,
-      active: () => current.isActive('link'),
-      run: setLink
-    },
-    {
-      key: 'undo',
-      label: '撤销',
-      icon: Undo2,
-      active: () => false,
-      disabled: () => !current.can().undo(),
-      run: () => current.chain().focus().undo().run()
-    },
-    {
-      key: 'redo',
-      label: '重做',
-      icon: Redo2,
-      active: () => false,
-      disabled: () => !current.can().redo(),
-      run: () => current.chain().focus().redo().run()
-    }
-  ]
-})
+  'edit-mode'
+]
 
 watch(
   () => props.modelValue,
   (value) => {
     const current = editor.value
-    if (!current || value === htmlToMarkdown(current.getHTML())) return
-    syncing.value = true
-    current.commands.setContent(markdownToHtml(value), { emitUpdate: false })
-    syncing.value = false
+    if (syncing.value) return
+    const normalized = normalizeMarkdown(value || '')
+    if (!current || !editorReady.value) {
+      pendingMarkdown.value = normalized
+      return
+    }
+    if (normalized === editorMarkdown()) return
+    setEditorValue(normalized)
   }
 )
 
-onBeforeUnmount(() => {
-  editor.value?.destroy()
+onMounted(async () => {
+  mounted.value = true
+  await nextTick()
+  if (!mounted.value) return
+  editorElement.value?.addEventListener('error', handleUploadedImageError, true)
+  mountEditor('ir', props.modelValue || '')
 })
 
-function markdownToHtml(value: string) {
-  return md.render(value || '')
+onBeforeUnmount(() => {
+  mounted.value = false
+  editorReady.value = false
+  editorElement.value?.removeEventListener('error', handleUploadedImageError, true)
+  clearCleanupTimers()
+  void cleanupUnusedUploadedImages(normalizeMarkdown(props.modelValue || ''))
+  revokeUploadBlobURLs()
+  destroyEditor()
+  editor.value = null
+})
+
+function mountEditor(mode: EditorMode, value: string) {
+  if (!mounted.value || !editorElement.value) return
+  editorReady.value = false
+  pendingMarkdown.value = normalizeMarkdown(value)
+  let instance: Vditor | null = null
+  instance = new Vditor(editorElement.value, {
+    cache: { enable: false },
+    cdn: '/vditor',
+    counter: { enable: false },
+    height: 'auto',
+    icon: 'ant',
+    lang: 'zh_CN',
+    minHeight: props.rows * 24,
+    mode,
+    placeholder: props.placeholder,
+    toolbar,
+    toolbarConfig: { hide: false, pin: false },
+    value,
+    preview: {
+      actions: [],
+      delay: 200,
+      hljs: { enable: false, lineNumber: false, style: 'github' },
+      markdown: {
+        autoSpace: false,
+        codeBlockPreview: true,
+        fixTermTypo: false,
+        footnotes: true,
+        gfmAutoLink: true,
+        linkBase: '',
+        linkPrefix: '',
+        listStyle: false,
+        mark: false,
+        mathBlockPreview: false,
+        paragraphBeginningSpace: false,
+        sanitize: true,
+        toc: false
+      },
+      math: { engine: 'KaTeX', inlineDigit: false, macros: {} },
+      mode: 'editor',
+      render: { media: { enable: false } },
+      theme: { current: 'light' }
+    },
+    upload: {
+      accept: 'image/*',
+      handler: uploadImages,
+      max: 8 << 20,
+      multiple: true
+    },
+    input: (changedValue) => {
+      if (!mounted.value || !editorReady.value || settingValue.value) return
+      const normalized = normalizeMarkdown(changedValue)
+      syncing.value = true
+      emit('update:modelValue', normalized)
+      syncing.value = false
+      scheduleUnusedUploadedImageCleanup(normalized)
+    },
+    keydown: (event) => {
+      if (!isMarkdownSourceShortcut(event)) return
+      event.preventDefault()
+      toggleEditMode()
+    },
+    after: () => {
+      if (!mounted.value || editor.value !== instance || !instance) return
+      editorReady.value = true
+      const nextValue = pendingMarkdown.value ?? props.modelValue ?? ''
+      pendingMarkdown.value = null
+      if (normalizeMarkdown(nextValue) !== editorMarkdown(instance)) {
+        setEditorValue(nextValue)
+      }
+    }
+  })
+  editor.value = instance
 }
 
-function htmlToMarkdown(html: string) {
-  return turndown
-    .turndown(html)
-    .replace(/\n{3,}/g, '\n\n')
-    .trim()
+async function uploadImages(files: File[]): Promise<null> {
+  if (!mounted.value || !editorReady.value) return null
+  const imageFiles = files.filter((file): file is File => file instanceof File && file.type.startsWith('image/'))
+  if (imageFiles.length === 0) {
+    message.error('只能上传图片')
+    return null
+  }
+
+  try {
+    const markdown: string[] = []
+    for (const file of imageFiles) {
+      const uploaded = await api.uploadImage(file, props.uploadContext)
+      if (!mounted.value) return null
+      sessionUploadedURLs.add(uploaded.url)
+      markdown.push(`![${escapeMarkdownImageAlt(file.name || 'pasted image')}](${uploaded.url})`)
+    }
+    editor.value?.insertMD(markdown.join('\n') + '\n')
+    emitCurrentValue()
+    scheduleUnusedUploadedImageCleanup(editorMarkdown())
+    message.success(imageFiles.length === 1 ? '图片已插入' : `${imageFiles.length} 张图片已插入`)
+  } catch (error) {
+    message.error((error as Error).message)
+  }
+  return null
 }
 
-function setLink() {
+function toggleEditMode() {
+  const current = editor.value
+  if (!current || !editorReady.value) return
+
+  const nextMode: EditorMode = current.getCurrentMode() === 'sv' ? 'ir' : 'sv'
+  const value = editorMarkdown(current)
+  destroyEditor()
+  editor.value = null
+  editorReady.value = false
+
+  void nextTick(() => {
+    if (!mounted.value) return
+    mountEditor(nextMode, value)
+    editor.value?.focus()
+  })
+}
+
+function handleUploadedImageError(event: Event) {
+  const image = event.target
+  if (!(image instanceof HTMLImageElement)) return
+  const uploadSrc = image.getAttribute('src')
+  if (!uploadSrc?.startsWith('/uploads/')) return
+  void showUploadedImageFallback(image, uploadSrc)
+}
+
+async function showUploadedImageFallback(image: HTMLImageElement, uploadSrc: string) {
+  const objectURL = await objectURLForUploadedImage(uploadSrc)
+  if (mounted.value && objectURL !== uploadSrc) image.setAttribute('src', objectURL)
+}
+
+async function objectURLForUploadedImage(url: string) {
+  const cached = uploadBlobByURL.get(url)
+  if (cached) return cached
+  const pending = uploadBlobPromiseByURL.get(url)
+  if (pending) return pending
+
+  const pendingObjectURL = createUploadedImageObjectURL(url)
+  uploadBlobPromiseByURL.set(url, pendingObjectURL)
+  try {
+    return await pendingObjectURL
+  } finally {
+    uploadBlobPromiseByURL.delete(url)
+  }
+}
+
+async function createUploadedImageObjectURL(url: string) {
+  try {
+    const image = await api.getUploadedImageDataURL(url)
+    const blob = blobFromDataURL(image.data_url)
+    const objectURL = URL.createObjectURL(blob)
+    uploadBlobByURL.set(url, objectURL)
+    uploadURLByBlob.set(objectURL, image.url)
+    return objectURL
+  } catch {
+    return url
+  }
+}
+
+function normalizeMarkdown(value: string) {
+  let normalized = value || ''
+  for (const [objectURL, uploadURL] of uploadURLByBlob.entries()) {
+    normalized = normalized.split(objectURL).join(uploadURL)
+  }
+  return normalized.trim()
+}
+
+function emitCurrentValue() {
+  const current = editor.value
+  if (!current || !mounted.value || !editorReady.value) return
+  const normalized = editorMarkdown(current)
+  syncing.value = true
+  emit('update:modelValue', normalized)
+  syncing.value = false
+  scheduleUnusedUploadedImageCleanup(normalized)
+}
+
+function flush() {
+  emitCurrentValue()
+  return editorReady.value ? editorMarkdown() : normalizeMarkdown(props.modelValue || '')
+}
+
+function revokeUploadBlobURLs() {
+  for (const objectURL of uploadBlobByURL.values()) {
+    URL.revokeObjectURL(objectURL)
+  }
+  uploadBlobByURL.clear()
+  uploadBlobPromiseByURL.clear()
+  uploadURLByBlob.clear()
+}
+
+function scheduleUnusedUploadedImageCleanup(markdown: string, delay = 1500) {
+  for (const url of sessionUploadedURLs) {
+    if (markdown.includes(url) || cleanupTimers.has(url)) continue
+    const timer = window.setTimeout(() => {
+      cleanupTimers.delete(url)
+      void cleanupUploadedImage(url)
+    }, delay)
+    cleanupTimers.set(url, timer)
+  }
+}
+
+async function cleanupUnusedUploadedImages(markdown: string) {
+  await Promise.all(Array.from(sessionUploadedURLs)
+    .filter((url) => !markdown.includes(url))
+    .map((url) => cleanupUploadedImage(url)))
+}
+
+async function cleanupUploadedImage(url: string) {
+  const currentMarkdown = editorReady.value ? editorMarkdown() : normalizeMarkdown(props.modelValue || '')
+  if (currentMarkdown.includes(url)) return
+  try {
+    await api.deleteUploadedImage(url)
+    sessionUploadedURLs.delete(url)
+    revokeUploadBlobURL(url)
+  } catch {
+    // 清理失败不影响编辑，后续打开编辑器时仍可继续引用原文件。
+  }
+}
+
+function clearCleanupTimers() {
+  for (const timer of cleanupTimers.values()) {
+    window.clearTimeout(timer)
+  }
+  cleanupTimers.clear()
+}
+
+function revokeUploadBlobURL(url: string) {
+  const objectURL = uploadBlobByURL.get(url)
+  if (!objectURL) return
+  URL.revokeObjectURL(objectURL)
+  uploadBlobByURL.delete(url)
+  uploadURLByBlob.delete(objectURL)
+}
+
+function isMarkdownSourceShortcut(event: KeyboardEvent) {
+  return !event.isComposing && event.ctrlKey && !event.altKey && !event.shiftKey && (event.key === '/' || event.code === 'Slash')
+}
+
+function editorMarkdown(current = editor.value) {
+  if (!current || !editorReady.value) return normalizeMarkdown(props.modelValue || '')
+  return normalizeMarkdown(current.getValue())
+}
+
+function setEditorValue(value: string) {
+  const current = editor.value
+  if (!current || !editorReady.value) {
+    pendingMarkdown.value = normalizeMarkdown(value)
+    return
+  }
+  settingValue.value = true
+  try {
+    current.setValue(value || '', true)
+  } finally {
+    void nextTick(() => {
+      settingValue.value = false
+    })
+  }
+}
+
+function destroyEditor() {
   const current = editor.value
   if (!current) return
-  const previousUrl = current.getAttributes('link').href as string | undefined
-  const url = window.prompt('链接地址', previousUrl ?? '')
-  if (url === null) return
-  if (url.trim() === '') {
-    current.chain().focus().extendMarkRange('link').unsetLink().run()
+  if (!editorReady.value) {
+    markEditorDestroyed(current)
     return
   }
-  current.chain().focus().extendMarkRange('link').setLink({ href: url.trim() }).run()
+  current.destroy()
 }
 
-function pickImage() {
-  fileInput.value?.click()
+function markEditorDestroyed(current: object) {
+  ;(current as { isDestroyed?: boolean }).isDestroyed = true
 }
 
-async function uploadImage(event: Event) {
-  const input = event.target as HTMLInputElement
-  const file = input.files?.[0]
-  if (!file) return
-  if (!file.type.startsWith('image/')) {
-    message.error('只能上传图片')
-    input.value = ''
-    return
-  }
-  await insertImages([file])
-  input.value = ''
+function escapeMarkdownImageAlt(value: string) {
+  return value.replace(/\\/g, '\\\\').replace(/\]/g, '\\]')
 }
 
-function imageFilesFromClipboard(event: ClipboardEvent) {
-  const clipboard = event.clipboardData
-  if (!clipboard) return []
-
-  const transferFiles = Array.from(clipboard.files ?? []).filter((file) => file.type.startsWith('image/'))
-  const itemFiles = Array.from(clipboard.items ?? [])
-    .filter((item) => item.kind === 'file' && item.type.startsWith('image/'))
-    .map((item) => item.getAsFile())
-    .filter((file): file is File => Boolean(file))
-  const htmlDataImages = dataImageFilesFromHtml(clipboard.getData('text/html'))
-  const plainDataImages = dataImageFilesFromText(clipboard.getData('text/plain'))
-
-  return dedupeFiles([...transferFiles, ...itemFiles, ...htmlDataImages, ...plainDataImages])
-}
-
-function dataImageFilesFromHtml(html: string) {
-  if (!html) return []
-  const doc = new DOMParser().parseFromString(html, 'text/html')
-  return Array.from(doc.querySelectorAll('img'))
-    .map((img) => img.getAttribute('src') ?? '')
-    .filter((src) => src.startsWith('data:image/'))
-    .map((src, index) => fileFromDataUrl(src, `pasted-image-${index + 1}`))
-    .filter((file): file is File => Boolean(file))
-}
-
-function dataImageFilesFromText(text: string) {
-  if (!text.startsWith('data:image/')) return []
-  const file = fileFromDataUrl(text, 'pasted-image')
-  return file ? [file] : []
-}
-
-function fileFromDataUrl(dataUrl: string, baseName: string) {
-  const match = dataUrl.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/)
-  if (!match) return null
-  const [, mimeType, base64] = match
-  const binary = window.atob(base64)
+function blobFromDataURL(dataURL: string) {
+  const [metadata, payload = ''] = dataURL.split(',', 2)
+  const mimeType = metadata.match(/^data:([^;]+)/)?.[1] || 'application/octet-stream'
+  const binary = metadata.includes(';base64') ? window.atob(payload) : window.decodeURIComponent(payload)
   const bytes = new Uint8Array(binary.length)
   for (let index = 0; index < binary.length; index += 1) {
     bytes[index] = binary.charCodeAt(index)
   }
-  return new File([bytes], `${baseName}.${extensionForMimeType(mimeType)}`, { type: mimeType })
-}
-
-function extensionForMimeType(mimeType: string) {
-  switch (mimeType) {
-    case 'image/jpeg':
-      return 'jpg'
-    case 'image/gif':
-      return 'gif'
-    case 'image/webp':
-      return 'webp'
-    default:
-      return 'png'
-  }
-}
-
-function dedupeFiles(files: File[]) {
-  const seen = new Set<string>()
-  return files.filter((file) => {
-    const key = `${file.name}:${file.type}:${file.size}:${file.lastModified}`
-    if (seen.has(key)) return false
-    seen.add(key)
-    return true
-  })
-}
-
-async function insertImages(files: File[]) {
-  const imageFiles = files.filter((file) => file.type.startsWith('image/'))
-  if (imageFiles.length === 0) return
-  uploading.value = true
-  let inserted = 0
-  try {
-    for (const file of imageFiles) {
-      const uploaded = await api.uploadImage(file)
-      editor.value?.chain().focus().setImage({ src: uploaded.url, alt: file.name || 'pasted image' }).run()
-      inserted += 1
-    }
-    message.success(inserted === 1 ? '图片已插入' : `${inserted} 张图片已插入`)
-  } catch (error) {
-    message.error((error as Error).message)
-  } finally {
-    uploading.value = false
-  }
+  return new Blob([bytes], { type: mimeType })
 }
 </script>
 
 <style scoped>
-.rich-editor {
+.markdown-editor {
   border: 1px solid #d9dee8;
   border-radius: 8px;
   overflow: hidden;
 }
 
-.editor-toolbar {
-  align-items: center;
+.vditor-host :deep(.vditor) {
+  border: 0;
+  border-radius: 0;
+  min-height: var(--editor-min-height);
+}
+
+.vditor-host :deep(.vditor-toolbar) {
   background: #f8fafc;
   border-bottom: 1px solid #e5e7eb;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  padding: 6px;
 }
 
-.toolbar-divider {
-  background: #d9dee8;
-  height: 22px;
-  margin: 0 4px;
-  width: 1px;
+.vditor-host :deep(.vditor-reset),
+.vditor-host :deep(.vditor-ir),
+.vditor-host :deep(.vditor-sv),
+.vditor-host :deep(.vditor-wysiwyg) {
+  color: #111827;
+  font-size: 14px;
 }
 
-.file-input {
-  display: none;
+.vditor-host :deep(.vditor-reset h2),
+.vditor-host :deep(.vditor-wysiwyg h2) {
+  color: #0f172a;
+  font-size: 20px;
+  font-weight: 700;
 }
 
-.editor-surface :deep(.editor-content) {
-  background: #fff;
-  min-height: var(--editor-min-height);
-  outline: none;
-  padding: 12px;
+.vditor-host :deep(.vditor-reset h3),
+.vditor-host :deep(.vditor-wysiwyg h3) {
+  color: #1f2937;
+  font-size: 16px;
+  font-weight: 700;
 }
 
-.editor-surface :deep(.editor-content > *:first-child) {
-  margin-top: 0;
-}
-
-.editor-surface :deep(.editor-content > *:last-child) {
-  margin-bottom: 0;
-}
-
-.editor-surface :deep(.editor-content p) {
-  line-height: 1.7;
-  margin: 0 0 10px;
-}
-
-.editor-surface :deep(.editor-content h2),
-.editor-surface :deep(.editor-content h3) {
-  line-height: 1.35;
-  margin: 14px 0 8px;
-}
-
-.editor-surface :deep(.editor-content blockquote) {
-  border-left: 3px solid #94a3b8;
-  color: #475569;
-  margin: 10px 0;
-  padding-left: 10px;
-}
-
-.editor-surface :deep(.editor-content pre) {
-  background: #111827;
+.vditor-host :deep(.vditor-reset img),
+.vditor-host :deep(.vditor-wysiwyg img) {
   border-radius: 6px;
-  color: #f8fafc;
-  overflow-x: auto;
-  padding: 10px;
-}
-
-.editor-surface :deep(.editor-content img) {
-  border-radius: 6px;
-  display: block;
-  height: auto;
-  margin: 10px 0;
   max-width: 100%;
-}
-
-.editor-surface :deep(.is-editor-empty:first-child::before) {
-  color: #94a3b8;
-  content: attr(data-placeholder);
-  float: left;
-  height: 0;
-  pointer-events: none;
 }
 </style>

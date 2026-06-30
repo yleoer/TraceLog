@@ -5,7 +5,13 @@
         <h3 class="text-xs font-medium text-gray-600">{{ newTitle }}</h3>
         <n-button size="tiny" type="primary" :loading="saving" @click="saveComment">保存评论</n-button>
       </div>
-      <MarkdownEditor v-model="commentDraft" :rows="6" />
+      <MarkdownEditor
+        ref="commentEditor"
+        v-model="commentDraft"
+        :rows="6"
+        :upload-context="`${uploadContext}-comment`"
+        placeholder="写下进展、分析、结论..."
+      />
     </div>
 
     <slot />
@@ -33,7 +39,14 @@
             </template>
           </div>
         </div>
-        <MarkdownEditor v-if="editingId === event.id" v-model="editingContent" :rows="5" />
+        <MarkdownEditor
+          v-if="editingId === event.id"
+          :ref="setEditingEditor"
+          v-model="editingContent"
+          :rows="5"
+          :upload-context="`${uploadContext}-comment-${event.id}`"
+          placeholder="更新这条记录..."
+        />
         <MarkdownView v-else :content="event.content_md" />
       </article>
     </div>
@@ -60,24 +73,29 @@ const props = withDefaults(defineProps<{
   events: TimelineEvent[]
   newTitle?: string
   draftKey?: string
+  uploadContext?: string
   load: () => Promise<void>
   create: (content: string) => Promise<void>
   update: (event: TimelineEvent, content: string) => Promise<void>
   remove: (event: TimelineEvent) => Promise<void>
 }>(), {
   newTitle: '新增评论',
-  draftKey: ''
+  draftKey: '',
+  uploadContext: 'comment'
 })
 
 const message = useMessage()
 const commentDraft = ref('')
 const editingId = ref<number | null>(null)
 const editingContent = ref('')
+const commentEditor = ref<MarkdownEditorExpose | null>(null)
+const editingEditor = ref<MarkdownEditorExpose | null>(null)
 const saving = ref(false)
 const draftKeyRef = computed(() => props.draftKey)
 const { clearDraft } = useDraftAutosave(draftKeyRef, commentDraft)
 
 async function saveComment() {
+  commentEditor.value?.flush()
   const content = commentDraft.value.trim()
   if (!content) {
     message.error('评论内容不能为空')
@@ -100,14 +118,17 @@ async function saveComment() {
 function startEdit(event: TimelineEvent) {
   editingId.value = event.id
   editingContent.value = event.content_md
+  editingEditor.value = null
 }
 
 function cancelEdit() {
   editingId.value = null
   editingContent.value = ''
+  editingEditor.value = null
 }
 
 async function updateComment(event: TimelineEvent) {
+  editingEditor.value?.flush()
   const content = editingContent.value.trim()
   if (!content) {
     message.error('评论内容不能为空')
@@ -138,6 +159,14 @@ async function deleteComment(event: TimelineEvent) {
 
 function showError(error: unknown) {
   message.error((error as Error).message)
+}
+
+function setEditingEditor(editor: unknown) {
+  editingEditor.value = (editor as MarkdownEditorExpose | null) ?? null
+}
+
+type MarkdownEditorExpose = {
+  flush: () => string
 }
 </script>
 

@@ -192,6 +192,19 @@ type UploadedImage struct {
 	Size        int64  `json:"size"`
 }
 
+type UploadedImageData struct {
+	URL     string `json:"url"`
+	DataURL string `json:"data_url"`
+}
+
+type UploadedImageCleanup struct {
+	Scanned    int   `json:"scanned"`
+	Deleted    int   `json:"deleted"`
+	Kept       int   `json:"kept"`
+	Failed     int   `json:"failed"`
+	FreedBytes int64 `json:"freed_bytes"`
+}
+
 type IssueFilter struct {
 	Query  string
 	Status string
