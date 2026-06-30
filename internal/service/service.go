@@ -873,7 +873,7 @@ func buildWeekSummaryMessages(view WeekView, prompt string) []ai.Message {
 		hasRecords = true
 		b.WriteString("Temp tasks:\n")
 		for _, task := range view.TempTasks {
-			fmt.Fprintf(&b, "- %s | status: %s | priority: %s | content: %s | result: %s\n", task.Title, task.Status, task.Priority, truncate(task.ContentMD, 800), truncate(task.ResultMD, 500))
+			fmt.Fprintf(&b, "- %s | status: %s | priority: %s | content: %s\n", task.Title, task.Status, task.Priority, truncate(task.ContentMD, 800))
 		}
 		b.WriteString("\n")
 	}
@@ -1129,7 +1129,7 @@ func (s *Service) indexIssueEvent(ctx context.Context, issue Issue, event IssueE
 }
 
 func (s *Service) indexTempTask(ctx context.Context, task TempTask) error {
-	body := strings.Join([]string{task.Source, task.ContentMD, task.ResultMD, task.StartedAt, task.CompletedAt, task.ConvertedJiraKey}, "\n")
+	body := strings.Join([]string{task.Source, task.ContentMD, task.StartedAt, task.CompletedAt, task.ConvertedJiraKey}, "\n")
 	return s.repo.UpsertSearchIndex(ctx, "temp_task", fmt.Sprint(task.ID), task.Title, body, task.UpdatedAt)
 }
 
@@ -1481,7 +1481,6 @@ func renderTempTaskMarkdown(task TempTask) string {
 	fmt.Fprintf(&b, "# %s\n\n", task.Title)
 	fmt.Fprintf(&b, "- Source: %s\n- Status: %s\n- Priority: %s\n- Tags: %s\n- Started: %s\n- Completed: %s\n- Converted to Jira: %t\n- Jira Key: %s\n\n", task.Source, task.Status, task.Priority, strings.Join(task.Tags, ", "), task.StartedAt, task.CompletedAt, task.ConvertedToJira, task.ConvertedJiraKey)
 	writeSection(&b, "Content", task.ContentMD)
-	writeSection(&b, "Result", task.ResultMD)
 	return b.String()
 }
 

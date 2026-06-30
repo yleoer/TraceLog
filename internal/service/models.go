@@ -66,7 +66,6 @@ type TempTask struct {
 	Priority         string   `json:"priority"`
 	Tags             []string `json:"tags"`
 	ContentMD        string   `json:"content_md"`
-	ResultMD         string   `json:"result_md"`
 	StartedAt        string   `json:"started_at"`
 	CompletedAt      string   `json:"completed_at"`
 	ConvertedToJira  bool     `json:"converted_to_jira"`

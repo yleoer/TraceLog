@@ -263,13 +263,13 @@ func (s *Store) DeleteTempTaskEvent(ctx context.Context, id int64) error {
 }
 
 func (s *Store) ListTempTasks(ctx context.Context, filter service.TempTaskFilter) ([]service.TempTask, error) {
-	query := `SELECT id, title, source, status, priority, tags, content_md, result_md, started_at, completed_at, converted_to_jira, converted_jira_key, created_at, updated_at FROM temp_tasks`
+	query := `SELECT id, title, source, status, priority, tags, content_md, started_at, completed_at, converted_to_jira, converted_jira_key, created_at, updated_at FROM temp_tasks`
 	args := []any{}
 	where := []string{}
 	if filter.Query != "" {
 		like := "%" + filter.Query + "%"
-		where = append(where, `(title LIKE ? OR source LIKE ? OR content_md LIKE ? OR result_md LIKE ?)`)
-		args = append(args, like, like, like, like)
+		where = append(where, `(title LIKE ? OR source LIKE ? OR content_md LIKE ?)`)
+		args = append(args, like, like, like)
 	}
 	if filter.Status != "" {
 		where = append(where, "status = ?")
@@ -302,7 +302,7 @@ func (s *Store) ListTempTasks(ctx context.Context, filter service.TempTaskFilter
 }
 
 func (s *Store) GetTempTask(ctx context.Context, id int64) (service.TempTask, error) {
-	row := s.db.QueryRowContext(ctx, `SELECT id, title, source, status, priority, tags, content_md, result_md, started_at, completed_at, converted_to_jira, converted_jira_key, created_at, updated_at FROM temp_tasks WHERE id = ?`, id)
+	row := s.db.QueryRowContext(ctx, `SELECT id, title, source, status, priority, tags, content_md, started_at, completed_at, converted_to_jira, converted_jira_key, created_at, updated_at FROM temp_tasks WHERE id = ?`, id)
 	return scanTempTask(row)
 }
 
@@ -311,8 +311,8 @@ func (s *Store) CreateTempTask(ctx context.Context, task service.TempTask) (serv
 	if err != nil {
 		return service.TempTask{}, err
 	}
-	result, err := s.db.ExecContext(ctx, `INSERT INTO temp_tasks (title, source, status, priority, tags, content_md, result_md, started_at, completed_at, converted_to_jira, converted_jira_key, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		task.Title, task.Source, task.Status, task.Priority, string(tags), task.ContentMD, task.ResultMD, task.StartedAt, task.CompletedAt, task.ConvertedToJira, task.ConvertedJiraKey, task.CreatedAt, task.UpdatedAt)
+	result, err := s.db.ExecContext(ctx, `INSERT INTO temp_tasks (title, source, status, priority, tags, content_md, started_at, completed_at, converted_to_jira, converted_jira_key, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		task.Title, task.Source, task.Status, task.Priority, string(tags), task.ContentMD, task.StartedAt, task.CompletedAt, task.ConvertedToJira, task.ConvertedJiraKey, task.CreatedAt, task.UpdatedAt)
 	if err != nil {
 		return service.TempTask{}, err
 	}
@@ -325,8 +325,8 @@ func (s *Store) UpdateTempTask(ctx context.Context, task service.TempTask) (serv
 	if err != nil {
 		return service.TempTask{}, err
 	}
-	_, err = s.db.ExecContext(ctx, `UPDATE temp_tasks SET title = ?, source = ?, status = ?, priority = ?, tags = ?, content_md = ?, result_md = ?, started_at = ?, completed_at = ?, converted_to_jira = ?, converted_jira_key = ?, updated_at = ? WHERE id = ?`,
-		task.Title, task.Source, task.Status, task.Priority, string(tags), task.ContentMD, task.ResultMD, task.StartedAt, task.CompletedAt, task.ConvertedToJira, task.ConvertedJiraKey, task.UpdatedAt, task.ID)
+	_, err = s.db.ExecContext(ctx, `UPDATE temp_tasks SET title = ?, source = ?, status = ?, priority = ?, tags = ?, content_md = ?, started_at = ?, completed_at = ?, converted_to_jira = ?, converted_jira_key = ?, updated_at = ? WHERE id = ?`,
+		task.Title, task.Source, task.Status, task.Priority, string(tags), task.ContentMD, task.StartedAt, task.CompletedAt, task.ConvertedToJira, task.ConvertedJiraKey, task.UpdatedAt, task.ID)
 	if err != nil {
 		return service.TempTask{}, err
 	}
@@ -398,7 +398,7 @@ func (s *Store) ListEventsBetween(ctx context.Context, start string, end string)
 }
 
 func (s *Store) ListTempTasksUpdatedBetween(ctx context.Context, start string, end string) ([]service.TempTask, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id, title, source, status, priority, tags, content_md, result_md, started_at, completed_at, converted_to_jira, converted_jira_key, created_at, updated_at FROM temp_tasks WHERE (created_at >= ? AND created_at < ?) OR (updated_at >= ? AND updated_at < ?) OR (started_at >= ? AND started_at < ?) OR (completed_at >= ? AND completed_at < ?) ORDER BY updated_at DESC`, start, end, start, end, start, end, start, end)
+	rows, err := s.db.QueryContext(ctx, `SELECT id, title, source, status, priority, tags, content_md, started_at, completed_at, converted_to_jira, converted_jira_key, created_at, updated_at FROM temp_tasks WHERE (created_at >= ? AND created_at < ?) OR (updated_at >= ? AND updated_at < ?) OR (started_at >= ? AND started_at < ?) OR (completed_at >= ? AND completed_at < ?) ORDER BY updated_at DESC`, start, end, start, end, start, end, start, end)
 	if err != nil {
 		return nil, err
 	}
@@ -710,7 +710,7 @@ func scanTempTask(row scanner) (service.TempTask, error) {
 	var task service.TempTask
 	var tags string
 	var converted int
-	err := row.Scan(&task.ID, &task.Title, &task.Source, &task.Status, &task.Priority, &tags, &task.ContentMD, &task.ResultMD, &task.StartedAt, &task.CompletedAt, &converted, &task.ConvertedJiraKey, &task.CreatedAt, &task.UpdatedAt)
+	err := row.Scan(&task.ID, &task.Title, &task.Source, &task.Status, &task.Priority, &tags, &task.ContentMD, &task.StartedAt, &task.CompletedAt, &converted, &task.ConvertedJiraKey, &task.CreatedAt, &task.UpdatedAt)
 	if err != nil {
 		return service.TempTask{}, err
 	}

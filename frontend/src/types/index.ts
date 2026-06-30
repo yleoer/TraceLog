@@ -64,7 +64,6 @@ export interface TempTask {
   priority: string
   tags: string[]
   content_md: string
-  result_md: string
   started_at: string
   completed_at: string
   converted_to_jira: boolean

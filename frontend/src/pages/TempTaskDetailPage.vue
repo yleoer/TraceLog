@@ -31,10 +31,7 @@
     </div>
 
     <div class="card">
-      <n-tabs type="line" animated size="small">
-        <n-tab-pane name="content" tab="内容"><MarkdownEditor v-model="form.content_md" /></n-tab-pane>
-        <n-tab-pane name="result" tab="处理结果"><MarkdownEditor v-model="form.result_md" /></n-tab-pane>
-      </n-tabs>
+      <MarkdownEditor v-model="form.content_md" />
     </div>
 
     <section v-if="!isNew" class="card">
@@ -81,7 +78,6 @@ interface TempTaskForm {
   priority: string
   tags: string[]
   content_md: string
-  result_md: string
   started_at: string
   completed_at: string
   converted_to_jira: boolean
@@ -98,7 +94,6 @@ const form = reactive<TempTaskForm>({
   priority: 'medium',
   tags: [],
   content_md: '',
-  result_md: '',
   started_at: '',
   completed_at: '',
   converted_to_jira: false,

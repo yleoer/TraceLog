@@ -169,7 +169,6 @@ CREATE TABLE temp_tasks (
   priority TEXT NOT NULL,
   tags TEXT NOT NULL DEFAULT '[]',
   content_md TEXT NOT NULL DEFAULT '',
-  result_md TEXT NOT NULL DEFAULT '',
   started_at TEXT NOT NULL DEFAULT '',
   completed_at TEXT NOT NULL DEFAULT '',
   converted_to_jira INTEGER NOT NULL DEFAULT 0,

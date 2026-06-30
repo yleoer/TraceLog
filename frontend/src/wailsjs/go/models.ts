@@ -341,7 +341,6 @@ export namespace service {
 	    priority: string;
 	    tags: string[];
 	    content_md: string;
-	    result_md: string;
 	    started_at: string;
 	    completed_at: string;
 	    converted_to_jira: boolean;
@@ -362,7 +361,6 @@ export namespace service {
 	        this.priority = source["priority"];
 	        this.tags = source["tags"];
 	        this.content_md = source["content_md"];
-	        this.result_md = source["result_md"];
 	        this.started_at = source["started_at"];
 	        this.completed_at = source["completed_at"];
 	        this.converted_to_jira = source["converted_to_jira"];
