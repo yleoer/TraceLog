@@ -4,12 +4,18 @@
       class="flex flex-col border-r border-gray-200 bg-white transition-all duration-200"
       :class="collapsed ? 'w-16' : 'w-56'"
     >
-      <div class="flex h-14 items-center px-4 border-b border-gray-100">
-        <span v-if="!collapsed" class="text-lg font-bold tracking-tight text-gray-900">TraceLog</span>
-        <span v-else class="text-lg font-bold text-gray-900 mx-auto">T</span>
+      <div class="flex h-10 items-center justify-center border-b border-gray-100">
+        <button
+          class="sidebar-toggle"
+          :aria-label="collapsed ? '展开导航' : '收起导航'"
+          @click="collapsed = !collapsed"
+        >
+          <PanelLeftClose v-if="!collapsed" :size="16" />
+          <PanelLeftOpen v-else :size="16" />
+        </button>
       </div>
 
-      <nav class="flex-1 overflow-y-auto py-3 px-2 space-y-0.5">
+      <nav class="flex-1 overflow-y-auto py-3 px-2 space-y-0.5 app-scrollbar-hidden">
         <router-link
           v-for="item in navItems"
           :key="item.path"
@@ -22,17 +28,10 @@
         </router-link>
       </nav>
 
-      <button
-        class="flex items-center justify-center h-10 border-t border-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
-        @click="collapsed = !collapsed"
-      >
-        <PanelLeftClose v-if="!collapsed" :size="16" />
-        <PanelLeftOpen v-else :size="16" />
-      </button>
     </aside>
 
     <main class="flex-1 flex flex-col overflow-hidden">
-      <div class="flex-1 overflow-y-auto p-6">
+      <div class="flex-1 overflow-y-auto p-6 app-scrollbar-hidden">
         <router-view />
       </div>
     </main>
@@ -103,5 +102,21 @@ function isActive(path: string) {
 .nav-item.active {
   background: #eff6ff;
   color: #2563eb;
+}
+
+.sidebar-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  color: #6b7280;
+  transition: all 0.15s ease;
+}
+
+.sidebar-toggle:hover {
+  background: #f3f4f6;
+  color: #374151;
 }
 </style>

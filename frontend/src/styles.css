@@ -57,6 +57,12 @@
 
 body {
   margin: 0;
+  overflow: hidden;
+}
+
+#app {
+  height: 100vh;
+  overflow: hidden;
 }
 
 a {
@@ -96,4 +102,14 @@ a {
 .markdown-body img {
   border-radius: 6px;
   max-width: 100%;
+}
+
+.app-scrollbar-hidden {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.app-scrollbar-hidden::-webkit-scrollbar {
+  width: 0;
+  height: 0;
 }
