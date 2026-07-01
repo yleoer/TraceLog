@@ -17,6 +17,7 @@ import (
 const (
 	githubLatestReleaseURL = "https://api.github.com/repos/yleoer/TraceLog/releases/latest"
 	updateHTTPTimeout      = 60 * time.Second
+	devUpdateMessage       = "开发版本不检查更新"
 )
 
 var AppVersion = "dev"
@@ -25,6 +26,9 @@ type UpdateInfo struct {
 	CurrentVersion string `json:"current_version"`
 	LatestVersion  string `json:"latest_version"`
 	HasUpdate      bool   `json:"has_update"`
+	Skipped        bool   `json:"skipped"`
+	Message        string `json:"message"`
+	CheckedAt      string `json:"checked_at"`
 	ReleaseURL     string `json:"release_url"`
 	AssetName      string `json:"asset_name"`
 	AssetURL       string `json:"asset_url"`
@@ -52,14 +56,20 @@ type githubAsset struct {
 }
 
 func (a *App) GetUpdateInfo() (UpdateInfo, error) {
+	if shouldSkipUpdateCheck(AppVersion) {
+		return skippedUpdateInfo(AppVersion), nil
+	}
 	info, err := fetchUpdateInfo(context.Background())
 	if err != nil {
-		return UpdateInfo{CurrentVersion: normalizeVersion(AppVersion)}, err
+		return UpdateInfo{CurrentVersion: normalizeVersion(AppVersion), CheckedAt: nowRFC3339()}, err
 	}
 	return info, nil
 }
 
 func (a *App) InstallUpdate() (UpdateInstallResult, error) {
+	if shouldSkipUpdateCheck(AppVersion) {
+		return UpdateInstallResult{Message: "开发版本不支持在线升级"}, nil
+	}
 	info, err := fetchUpdateInfo(context.Background())
 	if err != nil {
 		return UpdateInstallResult{}, err
@@ -113,6 +123,7 @@ func fetchUpdateInfo(ctx context.Context) (UpdateInfo, error) {
 		CurrentVersion: current,
 		LatestVersion:  latest,
 		HasUpdate:      compareVersions(latest, current) > 0,
+		CheckedAt:      nowRFC3339(),
 		ReleaseURL:     release.HTMLURL,
 		AssetName:      asset.Name,
 		AssetURL:       asset.BrowserDownloadURL,
@@ -268,4 +279,29 @@ func safeFilename(name string) string {
 		return "TraceLog-update"
 	}
 	return name
+}
+
+func shouldSkipUpdateCheck(version string) bool {
+	return isDevVersion(version)
+}
+
+func isDevVersion(version string) bool {
+	version = strings.ToLower(normalizeVersion(version))
+	version = strings.TrimPrefix(version, "v")
+	return version == "dev" || strings.HasPrefix(version, "dev-") || strings.HasSuffix(version, "-dev")
+}
+
+func skippedUpdateInfo(version string) UpdateInfo {
+	current := normalizeVersion(version)
+	return UpdateInfo{
+		CurrentVersion: current,
+		LatestVersion:  current,
+		Skipped:        true,
+		Message:        devUpdateMessage,
+		CheckedAt:      nowRFC3339(),
+	}
+}
+
+func nowRFC3339() string {
+	return time.Now().UTC().Format(time.RFC3339)
 }

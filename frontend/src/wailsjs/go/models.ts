@@ -34,6 +34,9 @@ export namespace desktop {
 	    current_version: string;
 	    latest_version: string;
 	    has_update: boolean;
+	    skipped: boolean;
+	    message: string;
+	    checked_at: string;
 	    release_url: string;
 	    asset_name: string;
 	    asset_url: string;
@@ -49,6 +52,9 @@ export namespace desktop {
 	        this.current_version = source["current_version"];
 	        this.latest_version = source["latest_version"];
 	        this.has_update = source["has_update"];
+	        this.skipped = source["skipped"];
+	        this.message = source["message"];
+	        this.checked_at = source["checked_at"];
 	        this.release_url = source["release_url"];
 	        this.asset_name = source["asset_name"];
 	        this.asset_url = source["asset_url"];

@@ -223,6 +223,9 @@ export interface UpdateInfo {
   current_version: string
   latest_version: string
   has_update: boolean
+  skipped: boolean
+  message: string
+  checked_at: string
   release_url: string
   asset_name: string
   asset_url: string

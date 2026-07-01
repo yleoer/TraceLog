@@ -12,11 +12,12 @@
           <div class="space-y-1 text-sm text-gray-600">
             <div>当前版本：<span class="font-medium text-gray-900">{{ updateInfo?.current_version || '-' }}</span></div>
             <div>最新版本：<span class="font-medium text-gray-900">{{ updateInfo?.latest_version || '-' }}</span></div>
+            <div v-if="updateInfo?.checked_at" class="text-xs text-gray-400">上次检查：{{ formatCheckedAt(updateInfo.checked_at) }}</div>
             <div v-if="updateInfo?.asset_name" class="text-xs text-gray-400">{{ updateInfo.asset_name }}</div>
           </div>
         </div>
         <div class="flex flex-wrap items-center gap-2">
-          <n-button size="small" :loading="checkingUpdate" @click="checkUpdate">检查更新</n-button>
+          <n-button size="small" :loading="checkingUpdate" @click="checkUpdate({ force: true })">检查更新</n-button>
           <n-button
             size="small"
             type="primary"
@@ -140,6 +141,13 @@ const cleaningImages = ref(false)
 const checkingUpdate = ref(false)
 const installingUpdate = ref(false)
 const updateInfo = ref<UpdateInfo | null>(null)
+const updateCacheKey = 'tracelog:update-info:v1'
+const updateAutoCheckIntervalMs = 12 * 60 * 60 * 1000
+
+interface CachedUpdateInfo {
+  checkedAt: number
+  info: UpdateInfo
+}
 
 const form = reactive<AppSettings>({
   jira: { base_url: '', email: '', api_token: '', has_api_token: false },
@@ -150,7 +158,8 @@ const form = reactive<AppSettings>({
 })
 
 const updateStatusText = computed(() => {
-  if (!updateInfo.value) return '点击检查更新以获取 GitHub Release 最新版本。'
+  if (!updateInfo.value) return '自动检查最多每 12 小时执行一次，也可手动检查更新。'
+  if (updateInfo.value.skipped) return updateInfo.value.message || '开发版本不检查更新。'
   if (updateInfo.value.has_update && updateInfo.value.asset_url) return '发现新版本，可以直接下载并启动安装程序。'
   if (updateInfo.value.has_update) return '发现新版本，但当前平台没有可用安装包。'
   return '当前已是最新版本。'
@@ -168,19 +177,48 @@ async function loadSettings() {
   }
 }
 
-async function checkUpdate() {
+async function checkUpdate(options: { force?: boolean; silent?: boolean } = {}) {
+  if (!options.force && loadCachedUpdateInfo()) return
   checkingUpdate.value = true
   try {
     updateInfo.value = await api.getUpdateInfo()
+    saveUpdateInfoCache(updateInfo.value)
+    if (options.silent) return
+    if (updateInfo.value.skipped) {
+      message.info(updateInfo.value.message || '开发版本不检查更新')
+      return
+    }
     if (updateInfo.value.has_update) {
       message.success(`发现新版本 ${updateInfo.value.latest_version}`)
       return
     }
     message.success('当前已是最新版本')
   } catch (error) {
-    message.error((error as Error).message)
+    if (!options.silent) message.error((error as Error).message)
   } finally {
     checkingUpdate.value = false
+  }
+}
+
+function loadCachedUpdateInfo() {
+  try {
+    const raw = localStorage.getItem(updateCacheKey)
+    if (!raw) return false
+    const cache = JSON.parse(raw) as CachedUpdateInfo
+    if (!cache.info || typeof cache.checkedAt !== 'number' || Date.now() - cache.checkedAt > updateAutoCheckIntervalMs) return false
+    updateInfo.value = cache.info
+    return true
+  } catch {
+    localStorage.removeItem(updateCacheKey)
+    return false
+  }
+}
+
+function saveUpdateInfoCache(info: UpdateInfo) {
+  try {
+    localStorage.setItem(updateCacheKey, JSON.stringify({ checkedAt: Date.now(), info }))
+  } catch {
+    // localStorage may be unavailable in some embedded/webview modes.
   }
 }
 
@@ -239,9 +277,15 @@ function formatBytes(bytes: number) {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`
 }
 
+function formatCheckedAt(value: string) {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return date.toLocaleString()
+}
+
 onMounted(async () => {
   await loadSettings()
-  await checkUpdate()
+  await checkUpdate({ silent: true })
 })
 </script>
 
