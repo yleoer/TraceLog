@@ -9,36 +9,43 @@
             <template #trigger><n-button size="small" type="error" ghost>删除</n-button></template>
             删除后该临时需求的评论将一并移除，确认删除？
           </n-popconfirm>
-          <n-button type="primary" size="small" :loading="saving" @click="save">保存</n-button>
+          <n-button v-if="isNew" type="primary" size="small" :loading="saving" @click="save">创建</n-button>
         </div>
       </div>
 
       <div class="card">
         <n-form label-placement="top" size="small">
           <div class="grid grid-cols-1 md:grid-cols-2 gap-x-4">
-            <n-form-item label="标题"><n-input v-model:value="form.title" placeholder="临时需求标题" /></n-form-item>
-            <n-form-item label="来源"><n-input v-model:value="form.source" placeholder="领导、同事、会议、线上问题..." /></n-form-item>
-            <n-form-item label="状态"><n-select v-model:value="form.status" :options="statusOptions" /></n-form-item>
-            <n-form-item label="优先级"><n-select v-model:value="form.priority" :options="priorityOptions" /></n-form-item>
-            <n-form-item label="开始时间"><n-date-picker v-model:value="schedule.startedAt" type="datetime" clearable class="w-full" /></n-form-item>
-            <n-form-item label="结束时间"><n-date-picker v-model:value="schedule.completedAt" type="datetime" clearable class="w-full" /></n-form-item>
+            <n-form-item label="标题"><n-input v-model:value="form.title" placeholder="临时需求标题" @update:value="saveMetaSoon" /></n-form-item>
+            <n-form-item label="来源"><n-input v-model:value="form.source" placeholder="领导、同事、会议、线上问题..." @update:value="saveMetaSoon" /></n-form-item>
+            <n-form-item label="状态"><n-select v-model:value="form.status" :options="statusOptions" @update:value="saveMetaSoon" /></n-form-item>
+            <n-form-item label="优先级"><n-select v-model:value="form.priority" :options="priorityOptions" @update:value="saveMetaSoon" /></n-form-item>
+            <n-form-item label="开始时间"><n-date-picker v-model:value="schedule.startedAt" type="datetime" clearable class="w-full" @update:value="saveMetaSoon" /></n-form-item>
+            <n-form-item label="结束时间"><n-date-picker v-model:value="schedule.completedAt" type="datetime" clearable class="w-full" @update:value="saveMetaSoon" /></n-form-item>
           </div>
-          <n-form-item label="标签"><n-dynamic-tags v-model:value="form.tags" /></n-form-item>
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-x-4">
-            <n-form-item label="已转 Jira"><n-switch v-model:value="form.converted_to_jira" /></n-form-item>
-            <n-form-item label="Jira 编号"><n-input v-model:value="form.converted_jira_key" placeholder="例如 GCS-45000" /></n-form-item>
-          </div>
+          <n-form-item label="标签"><n-dynamic-tags v-model:value="form.tags" @update:value="saveMetaSoon" /></n-form-item>
+          <n-form-item label="Jira 编号"><n-input v-model:value="form.converted_jira_key" placeholder="例如 GCS-45000" @update:value="saveMetaSoon" /></n-form-item>
         </n-form>
       </div>
 
       <div class="card">
-        <MarkdownEditor
-          v-if="editorVisible"
-          ref="contentEditor"
-          v-model="form.content_md"
-          :upload-context="tempTaskUploadContext('content')"
-          placeholder="记录临时需求的背景、处理过程和后续事项..."
-        />
+        <div v-if="contentEditing || isNew" class="space-y-3">
+          <MarkdownEditor
+            v-if="editorVisible"
+            ref="contentEditor"
+            v-model="contentDraft"
+            :upload-context="tempTaskUploadContext('content')"
+            placeholder="记录临时需求的背景、处理过程和后续事项..."
+          />
+          <div v-if="!isNew" class="flex justify-end gap-2">
+            <n-button size="small" @click="cancelContentEdit">取消</n-button>
+            <n-button size="small" type="primary" :loading="contentSaving" @click="saveContentEdit">保存</n-button>
+          </div>
+        </div>
+        <div v-else class="content-view" title="双击编辑内容" @dblclick="startContentEdit">
+          <MarkdownView v-if="form.content_md" :content="form.content_md" />
+          <div v-else class="empty-content">暂无内容，双击添加</div>
+        </div>
       </div>
 
       <section v-if="!isNew" class="card">
@@ -57,11 +64,12 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useMessage } from 'naive-ui'
 import { useRoute, useRouter } from 'vue-router'
 import { api, downloadUrl } from '../api/client'
 import MarkdownEditor from '../components/MarkdownEditor.vue'
+import MarkdownView from '../components/MarkdownView.vue'
 import CommentTimeline from '../components/CommentTimeline.vue'
 import type { TempTask, TempTaskEvent } from '../types'
 
@@ -70,10 +78,15 @@ const router = useRouter()
 const message = useMessage()
 const loading = ref(false)
 const saving = ref(false)
+const contentSaving = ref(false)
 const isNew = computed(() => !route.params.id)
 const editorVisible = computed(() => isNew.value || !loading.value)
 const contentEditor = ref<MarkdownEditorExpose | null>(null)
+const contentEditing = ref(false)
+const contentDraft = ref('')
 let loadToken = 0
+let metaSaveTimer: number | undefined
+let metaSaveToken = 0
 
 const events = ref<TempTaskEvent[]>([])
 
@@ -150,6 +163,7 @@ const priorityOptions = [
 ]
 
 async function load() {
+  await flushMeta()
   const token = ++loadToken
   const id = route.params.id
   if (!id) {
@@ -161,6 +175,8 @@ async function load() {
     const task = await api.getTempTask(String(id))
     if (token !== loadToken) return
     Object.assign(form, task)
+    contentDraft.value = form.content_md
+    contentEditing.value = false
     hydrateSchedule()
     await loadEvents(String(id))
   } catch (error) {
@@ -200,6 +216,9 @@ async function removeTask() {
 
 async function save() {
   contentEditor.value?.flush()
+  if (isNew.value) {
+    form.content_md = contentDraft.value
+  }
   if (!form.title.trim()) {
     message.error('标题不能为空')
     return
@@ -221,6 +240,68 @@ async function save() {
   } finally {
     saving.value = false
   }
+}
+
+function startContentEdit() {
+  contentDraft.value = form.content_md
+  contentEditing.value = true
+}
+
+function cancelContentEdit() {
+  contentDraft.value = form.content_md
+  contentEditing.value = false
+}
+
+async function saveContentEdit() {
+  contentEditor.value?.flush()
+  contentSaving.value = true
+  try {
+    serializeSchedule()
+    const updated = await api.updateTempTask(String(route.params.id), { ...form, content_md: contentDraft.value })
+    Object.assign(form, updated)
+    hydrateSchedule()
+    contentDraft.value = form.content_md
+    contentEditing.value = false
+    message.success('内容已保存')
+  } catch (error) {
+    message.error((error as Error).message)
+  } finally {
+    contentSaving.value = false
+  }
+}
+
+function saveMetaSoon() {
+  serializeSchedule()
+  if (isNew.value) return
+  window.clearTimeout(metaSaveTimer)
+  metaSaveTimer = window.setTimeout(() => {
+    metaSaveTimer = undefined
+    void saveMeta()
+  }, 450)
+}
+
+async function saveMeta() {
+  if (isNew.value || !route.params.id) return
+  if (!form.title.trim()) {
+    message.error('标题不能为空')
+    return
+  }
+  const token = ++metaSaveToken
+  try {
+    const updated = await api.updateTempTask(String(route.params.id), form)
+    if (token !== metaSaveToken) return
+    Object.assign(form, updated)
+    hydrateSchedule()
+  } catch (error) {
+    message.error((error as Error).message)
+  }
+}
+
+async function flushMeta() {
+  if (metaSaveTimer === undefined) return
+  window.clearTimeout(metaSaveTimer)
+  metaSaveTimer = undefined
+  await saveMeta()
 }
 
 function hydrateSchedule() {
@@ -245,6 +326,8 @@ function tempTaskUploadContext(part: string) {
 
 function resetForm() {
   Object.assign(form, { ...emptyForm, tags: [] })
+  contentDraft.value = ''
+  contentEditing.value = false
   events.value = []
   schedule.startedAt = null
   schedule.completedAt = null
@@ -252,6 +335,9 @@ function resetForm() {
 
 watch(() => route.params.id, load)
 onMounted(load)
+onBeforeUnmount(() => {
+  void flushMeta()
+})
 
 type MarkdownEditorExpose = {
   flush: () => string
@@ -266,4 +352,14 @@ type MarkdownEditorExpose = {
   padding: 18px 20px;
 }
 
+.content-view {
+  min-height: 120px;
+  cursor: text;
+}
+
+.empty-content {
+  color: #9ca3af;
+  font-size: 13px;
+  padding: 8px 0;
+}
 </style>

@@ -67,7 +67,7 @@ const columns: DataTableColumns<TempTask> = [
   { title: '优先级', key: 'priority', width: 90, render: (row) => h(PriorityTag, { priority: row.priority, label: tempPriorityLabel(row.priority) }) },
   { title: '开始时间', key: 'started_at', width: 150, render: (row) => formatDate(row.started_at) },
   { title: '结束时间', key: 'completed_at', width: 150, render: (row) => formatDate(row.completed_at) },
-  { title: '转 Jira', key: 'converted_jira_key', width: 120 },
+  { title: 'Jira', key: 'converted_jira_key', width: 120 },
   { title: '更新时间', key: 'updated_at', width: 150, render: (row) => formatDate(row.updated_at) }
 ]
 

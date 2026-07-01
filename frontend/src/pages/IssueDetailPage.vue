@@ -11,7 +11,7 @@
           <template #trigger><n-button size="small" type="error" ghost>删除</n-button></template>
           删除后该 Issue 的评论、TODO 等将一并移除，确认删除？
         </n-popconfirm>
-        <n-button v-if="!isNew || hasJiraData" type="primary" size="small" :loading="saving" @click="save">保存</n-button>
+        <n-button v-if="isNew && hasJiraData" type="primary" size="small" :loading="saving" @click="save">创建</n-button>
       </div>
     </div>
 
@@ -86,11 +86,11 @@
         </div>
         <div v-if="!isNew" class="border-b border-gray-100 pb-3">
           <label class="field-label">开始时间</label>
-          <n-date-picker v-model:value="manual.startedAt" type="datetime" clearable size="small" class="w-full" @update:value="serializeManualFields" />
+          <n-date-picker v-model:value="manual.startedAt" type="datetime" clearable size="small" class="w-full" @update:value="saveManualFieldsSoon" />
         </div>
         <div v-if="!isNew" class="border-b border-gray-100 pb-3">
           <label class="field-label">完成时间</label>
-          <n-date-picker v-model:value="manual.completedAt" type="datetime" clearable size="small" class="w-full" @update:value="serializeManualFields" />
+          <n-date-picker v-model:value="manual.completedAt" type="datetime" clearable size="small" class="w-full" @update:value="saveManualFieldsSoon" />
         </div>
       </div>
 
@@ -99,7 +99,7 @@
           <label class="field-label">简述</label>
           <n-button size="tiny" type="primary" :loading="summaryGenerating" @click.stop="generateSummary">AI 总结</n-button>
         </div>
-        <n-input v-model:value="manual.summary" type="textarea" size="small" :autosize="{ minRows: 3 }" placeholder="点击 AI 总结自动生成" @update:value="serializeManualFields" />
+        <n-input v-model:value="manual.summary" type="textarea" size="small" :autosize="{ minRows: 3 }" placeholder="点击 AI 总结自动生成" @update:value="saveManualFieldsSoon" />
       </div>
 
       <n-collapse v-if="jiraMeta.description" class="mt-4 border-t border-gray-100 pt-3" :default-expanded-names="[]">
@@ -151,7 +151,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useMessage } from 'naive-ui'
 import { useRoute, useRouter } from 'vue-router'
 import { api, downloadUrl } from '../api/client'
@@ -177,6 +177,8 @@ const jiraInput = ref('')
 const events = ref<IssueEvent[]>([])
 const todos = ref<IssueTodo[]>([])
 const isNew = computed(() => !route.params.jiraKey)
+let manualSaveTimer: number | undefined
+let manualSaveToken = 0
 
 interface TimelineEvent {
   id: number
@@ -246,6 +248,7 @@ const jiraAddress = computed(() => firstJiraLink(form.links) || (form.jira_key ?
 const importedAtText = computed(() => formatDateTime(form.created_at || form.updated_at))
 
 async function load() {
+  await flushManualFields()
   if (isNew.value) return
   const jiraKey = String(route.params.jiraKey)
   try {
@@ -320,6 +323,37 @@ async function save() {
   } finally {
     saving.value = false
   }
+}
+
+function saveManualFieldsSoon() {
+  serializeManualFields()
+  if (isNew.value) return
+  window.clearTimeout(manualSaveTimer)
+  manualSaveTimer = window.setTimeout(() => {
+    manualSaveTimer = undefined
+    void saveManualFields()
+  }, 450)
+}
+
+async function saveManualFields() {
+  if (isNew.value || !form.jira_key) return
+  const token = ++manualSaveToken
+  const payload = { ...form }
+  try {
+    const updated = await api.updateIssue(form.jira_key, payload)
+    if (token !== manualSaveToken) return
+    Object.assign(form, updated)
+    hydrateManualFields()
+  } catch (error) {
+    message.error((error as Error).message)
+  }
+}
+
+async function flushManualFields() {
+  if (manualSaveTimer === undefined) return
+  window.clearTimeout(manualSaveTimer)
+  manualSaveTimer = undefined
+  await saveManualFields()
 }
 
 async function generateSummary() {
@@ -451,6 +485,9 @@ function issueUploadContext(part: string) {
 
 watch(() => route.params.jiraKey, load)
 onMounted(load)
+onBeforeUnmount(() => {
+  void flushManualFields()
+})
 </script>
 
 <style scoped>
