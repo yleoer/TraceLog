@@ -59,6 +59,8 @@ export function GetUploadedImageDataURL(arg1:string):Promise<service.UploadedIma
 
 export function GetWeek(arg1:string):Promise<service.WeekView>;
 
+export function GetWeekBounds():Promise<service.WeekBounds>;
+
 export function ImportJiraIssue(arg1:string):Promise<service.Issue>;
 
 export function ListIssueEvents(arg1:string):Promise<Array<service.IssueEvent>>;

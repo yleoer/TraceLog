@@ -81,6 +81,11 @@ export interface WeeklyLog {
   updated_at: string
 }
 
+export interface WeekBounds {
+  first_week: string
+  current_week: string
+}
+
 export interface DayComment {
   source: string
   event_id: number

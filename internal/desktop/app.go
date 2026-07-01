@@ -228,6 +228,10 @@ func (a *App) ListWeeks() ([]service.WeeklyLog, error) {
 	return a.service.ListWeeklyLogs(context.Background())
 }
 
+func (a *App) GetWeekBounds() (service.WeekBounds, error) {
+	return a.service.GetWeekBounds(context.Background())
+}
+
 func (a *App) GetWeek(week string) (service.WeekView, error) {
 	return a.service.GetWeekView(context.Background(), week)
 }

@@ -83,6 +83,11 @@ type WeeklyLog struct {
 	UpdatedAt  string `json:"updated_at"`
 }
 
+type WeekBounds struct {
+	FirstWeek   string `json:"first_week"`
+	CurrentWeek string `json:"current_week"`
+}
+
 type DayComment struct {
 	Source     string `json:"source"`
 	EventID    int64  `json:"event_id"`

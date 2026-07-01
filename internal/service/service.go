@@ -79,6 +79,7 @@ type Repository interface {
 	GetWeeklyLog(context.Context, string) (WeeklyLog, error)
 	UpsertWeeklyLog(context.Context, WeeklyLog) (WeeklyLog, error)
 	ListWeeklyLogs(context.Context) ([]WeeklyLog, error)
+	FirstActivityDate(context.Context) (string, error)
 	ListIssuesUpdatedBetween(context.Context, string, string) ([]Issue, error)
 	ListEventsBetween(context.Context, string, string) ([]IssueEvent, error)
 	ListTempTasksUpdatedBetween(context.Context, string, string) ([]TempTask, error)
@@ -414,6 +415,35 @@ func (s *Service) DeleteTempTask(ctx context.Context, id int64) error {
 
 func (s *Service) ListWeeklyLogs(ctx context.Context) ([]WeeklyLog, error) {
 	return s.repo.ListWeeklyLogs(ctx)
+}
+
+func (s *Service) GetWeekBounds(ctx context.Context) (WeekBounds, error) {
+	current := CurrentWeek(s.loc)
+	firstWeek := current
+	firstDate, err := s.repo.FirstActivityDate(ctx)
+	if err != nil {
+		return WeekBounds{}, err
+	}
+	if firstDate != "" {
+		parsed, err := time.ParseInLocation("2006-01-02", firstDate, s.loc)
+		if err != nil {
+			return WeekBounds{}, err
+		}
+		firstWeek = weekFromTime(parsed.In(s.loc))
+	}
+	logs, err := s.repo.ListWeeklyLogs(ctx)
+	if err != nil {
+		return WeekBounds{}, err
+	}
+	for _, log := range logs {
+		if _, _, err := weekRange(log.Week, s.loc); err == nil && log.Week < firstWeek {
+			firstWeek = log.Week
+		}
+	}
+	if firstWeek > current {
+		firstWeek = current
+	}
+	return WeekBounds{FirstWeek: firstWeek, CurrentWeek: current}, nil
 }
 
 func (s *Service) GetWeekView(ctx context.Context, week string) (WeekView, error) {
@@ -1465,7 +1495,11 @@ func nowString() string {
 }
 
 func CurrentWeek(loc *time.Location) string {
-	year, week := time.Now().In(loc).ISOWeek()
+	return weekFromTime(time.Now().In(loc))
+}
+
+func weekFromTime(value time.Time) string {
+	year, week := value.ISOWeek()
 	return fmt.Sprintf("%04d-W%02d", year, week)
 }
 

@@ -114,6 +114,10 @@ export function GetWeek(arg1) {
   return window['go']['desktop']['App']['GetWeek'](arg1);
 }
 
+export function GetWeekBounds() {
+  return window['go']['desktop']['App']['GetWeekBounds']();
+}
+
 export function ImportJiraIssue(arg1) {
   return window['go']['desktop']['App']['ImportJiraIssue'](arg1);
 }

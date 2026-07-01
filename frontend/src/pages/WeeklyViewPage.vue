@@ -3,7 +3,7 @@
     <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
       <h1 class="text-xl font-bold text-gray-900">周视图</h1>
       <div class="flex flex-wrap items-center gap-2">
-        <n-button size="small" @click="shiftWeek(-1)">上一周</n-button>
+        <n-button size="small" :disabled="!canGoPrevious" @click="shiftWeek(-1)">上一周</n-button>
         <n-select
           v-model:value="week"
           :options="weekOptions"
@@ -14,7 +14,7 @@
           style="width: 160px"
           @update:value="openWeek"
         />
-        <n-button size="small" @click="shiftWeek(1)">下一周</n-button>
+        <n-button size="small" :disabled="!canGoNext" @click="shiftWeek(1)">下一周</n-button>
         <n-button size="small" @click="openWeek(currentWeek())">本周</n-button>
         <n-button size="small" @click="load">刷新</n-button>
         <n-button size="small" :loading="drafting" @click="generateDraft">生成草稿</n-button>
@@ -133,7 +133,7 @@ import StatusTag from '../components/StatusTag.vue'
 import DayWorkPanel from '../components/DayWorkPanel.vue'
 import { tempStatusLabel } from '../utils/tempTaskDisplay'
 import { formatDateTime } from '../utils/datetime'
-import type { WeekView } from '../types'
+import type { WeekBounds, WeekView } from '../types'
 
 const route = useRoute()
 const router = useRouter()
@@ -141,6 +141,7 @@ const message = useMessage()
 const loading = ref(false)
 const drafting = ref(false)
 const summarizing = ref(false)
+const weekBounds = ref<WeekBounds>()
 const week = ref(String(route.params.week || currentWeek()))
 const weekOptions = ref<{ label: string; value: string }[]>([])
 const view = ref<WeekView>()
@@ -151,12 +152,21 @@ const nextPlanEditorVisible = ref(false)
 const summaryEditor = ref<MarkdownEditorExpose | null>(null)
 const nextPlanEditor = ref<MarkdownEditorExpose | null>(null)
 const visibleDays = computed(() => (view.value?.days ?? []).filter((day) => day.date <= todayDate()))
+const firstWeek = computed(() => weekBounds.value?.first_week || currentWeek())
+const lastWeek = computed(() => weekBounds.value?.current_week || currentWeek())
+const canGoPrevious = computed(() => compareWeeks(normalizeWeek(week.value), firstWeek.value) > 0)
+const canGoNext = computed(() => compareWeeks(normalizeWeek(week.value), lastWeek.value) < 0)
 
 async function load() {
-  const normalized = normalizeWeek(week.value)
+  await loadWeekBounds()
+  const normalized = clampWeek(normalizeWeek(week.value))
   if (!normalized) {
     message.error('周号格式应为 YYYY-Www，例如 2026-W26')
     return
+  }
+  if (normalized !== week.value) {
+    week.value = normalized
+    router.replace(`/weeks/${normalized}`)
   }
   week.value = normalized
   loading.value = true
@@ -177,11 +187,20 @@ async function load() {
 async function loadWeekOptions() {
   try {
     const logs = await api.listWeeks()
-    const values = new Set([currentWeek(), week.value, ...logs.map((log) => log.week)])
+    const values = new Set([lastWeek.value, week.value, ...logs.map((log) => log.week)])
     weekOptions.value = Array.from(values)
+      .filter((value) => isWeekInBounds(value))
       .sort()
       .reverse()
       .map((value) => ({ label: value, value }))
+  } catch (error) {
+    message.error((error as Error).message)
+  }
+}
+
+async function loadWeekBounds() {
+  try {
+    weekBounds.value = await api.getWeekBounds()
   } catch (error) {
     message.error((error as Error).message)
   }
@@ -236,17 +255,46 @@ function openWeek(value: string) {
     message.error('周号格式应为 YYYY-Www，例如 2026-W26')
     return
   }
-  week.value = normalized
-  router.push(`/weeks/${normalized}`)
+  const bounded = clampWeek(normalized)
+  if (bounded !== normalized) {
+    message.info(bounded === firstWeek.value ? '已经是最早有数据的一周' : '不能进入未来周')
+  }
+  week.value = bounded
+  router.push(`/weeks/${bounded}`)
 }
 
 function shiftWeek(delta: number) {
-  openWeek(addWeeks(week.value, delta))
+  const target = addWeeks(week.value, delta)
+  if (delta < 0 && compareWeeks(target, firstWeek.value) < 0) return
+  if (delta > 0 && compareWeeks(target, lastWeek.value) > 0) return
+  openWeek(target)
 }
 
 function currentWeek() {
-  const now = new Date()
-  const date = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()))
+  return weekBounds.value?.current_week || weekFromDate(new Date())
+}
+
+function clampWeek(value: string) {
+  if (!value) return ''
+  if (compareWeeks(value, firstWeek.value) < 0) return firstWeek.value
+  if (compareWeeks(value, lastWeek.value) > 0) return lastWeek.value
+  return value
+}
+
+function isWeekInBounds(value: string) {
+  const normalized = normalizeWeek(value)
+  return normalized && compareWeeks(normalized, firstWeek.value) >= 0 && compareWeeks(normalized, lastWeek.value) <= 0
+}
+
+function compareWeeks(left: string, right: string) {
+  const normalizedLeft = normalizeWeek(left)
+  const normalizedRight = normalizeWeek(right)
+  if (!normalizedLeft || !normalizedRight) return 0
+  return normalizedLeft.localeCompare(normalizedRight)
+}
+
+function weekFromDate(input: Date) {
+  const date = new Date(Date.UTC(input.getFullYear(), input.getMonth(), input.getDate()))
   const day = date.getUTCDay() || 7
   date.setUTCDate(date.getUTCDate() + 4 - day)
   const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1))
@@ -278,15 +326,6 @@ function isoWeekToDate(year: number, weekNumber: number) {
   return monday
 }
 
-function weekFromDate(input: Date) {
-  const date = new Date(Date.UTC(input.getUTCFullYear(), input.getUTCMonth(), input.getUTCDate()))
-  const day = date.getUTCDay() || 7
-  date.setUTCDate(date.getUTCDate() + 4 - day)
-  const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1))
-  const weekNo = Math.ceil((((date.getTime() - yearStart.getTime()) / 86400000) + 1) / 7)
-  return `${date.getUTCFullYear()}-W${String(weekNo).padStart(2, '0')}`
-}
-
 function formatDate(value: string) {
   return formatDateTime(value)
 }
@@ -306,6 +345,7 @@ watch(() => route.params.week, (value) => {
   }
 })
 onMounted(async () => {
+  await loadWeekBounds()
   await loadWeekOptions()
   await load()
 })

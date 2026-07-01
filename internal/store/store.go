@@ -398,6 +398,32 @@ func (s *Store) ListWeeklyLogs(ctx context.Context) ([]service.WeeklyLog, error)
 	return logs, rows.Err()
 }
 
+func (s *Store) FirstActivityDate(ctx context.Context) (string, error) {
+	var first sql.NullString
+	err := s.db.QueryRowContext(ctx, `
+SELECT MIN(date_value) FROM (
+  SELECT substr(created_at, 1, 10) AS date_value FROM issues WHERE created_at <> ''
+  UNION ALL SELECT substr(updated_at, 1, 10) FROM issues WHERE updated_at <> ''
+  UNION ALL SELECT substr(started_at, 1, 10) FROM issues WHERE started_at <> ''
+  UNION ALL SELECT substr(completed_at, 1, 10) FROM issues WHERE completed_at <> ''
+  UNION ALL SELECT substr(happened_at, 1, 10) FROM issue_events WHERE happened_at <> ''
+  UNION ALL SELECT substr(due_at, 1, 10) FROM issue_todos WHERE due_at <> ''
+  UNION ALL SELECT substr(created_at, 1, 10) FROM temp_tasks WHERE created_at <> ''
+  UNION ALL SELECT substr(updated_at, 1, 10) FROM temp_tasks WHERE updated_at <> ''
+  UNION ALL SELECT substr(started_at, 1, 10) FROM temp_tasks WHERE started_at <> ''
+  UNION ALL SELECT substr(completed_at, 1, 10) FROM temp_tasks WHERE completed_at <> ''
+  UNION ALL SELECT substr(happened_at, 1, 10) FROM temp_task_events WHERE happened_at <> ''
+  UNION ALL SELECT date FROM day_entries WHERE date <> ''
+)`).Scan(&first)
+	if err != nil {
+		return "", err
+	}
+	if !first.Valid {
+		return "", nil
+	}
+	return first.String, nil
+}
+
 func (s *Store) ListIssuesUpdatedBetween(ctx context.Context, start string, end string) ([]service.Issue, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT DISTINCT i.id, i.jira_key, i.title, i.status, i.priority, i.tags, i.summary_md, i.background_md, i.analysis_md, i.solution_md, i.actions_md, i.result_md, i.todo_md, i.links_json, i.started_at, i.completed_at, i.created_at, i.updated_at FROM issues i LEFT JOIN issue_events e ON e.issue_id = i.id WHERE (i.updated_at >= ? AND i.updated_at < ?) OR (e.happened_at >= ? AND e.happened_at < ?) OR (i.started_at >= ? AND i.started_at < ?) OR (i.completed_at >= ? AND i.completed_at < ?) ORDER BY i.updated_at DESC`, start, end, start, end, start, end, start, end)
 	if err != nil {

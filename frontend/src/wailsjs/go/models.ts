@@ -690,11 +690,11 @@ export namespace service {
 	    kept: number;
 	    failed: number;
 	    freed_bytes: number;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new UploadedImageCleanup(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.scanned = source["scanned"];
@@ -707,16 +707,32 @@ export namespace service {
 	export class UploadedImageData {
 	    url: string;
 	    data_url: string;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new UploadedImageData(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.url = source["url"];
 	        this.data_url = source["data_url"];
 	    }
 	}
+	export class WeekBounds {
+	    first_week: string;
+	    current_week: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new WeekBounds(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.first_week = source["first_week"];
+	        this.current_week = source["current_week"];
+	    }
+	}
+	
 
 }
+

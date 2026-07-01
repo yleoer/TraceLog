@@ -13,6 +13,7 @@ import type {
   UploadedImageData,
   UploadedImage,
   UploadedImageCleanup,
+  WeekBounds,
   WeekView,
   WeeklyLog
 } from '../types'
@@ -148,6 +149,7 @@ export const api = {
   createDayEntry: (entry: DayEntryInput) => nativeCall(() => DesktopApp.CreateDayEntry(service.DayEntry.createFrom(entry))) as Promise<DayEntry>,
   deleteDayEntry: (id: number) => nativeCall(() => DesktopApp.DeleteDayEntry(id)) as Promise<OkResponse>,
   listWeeks: () => nativeCall(() => DesktopApp.ListWeeks()) as Promise<WeeklyLog[]>,
+  getWeekBounds: () => nativeCall(() => DesktopApp.GetWeekBounds()) as Promise<WeekBounds>,
   getWeek: (week: string) => nativeCall(() => DesktopApp.GetWeek(week)) as Promise<WeekView>,
   updateWeek: (week: string, log: Partial<WeeklyLog>) =>
     nativeCall(() => DesktopApp.UpdateWeek(week, service.WeeklyLog.createFrom(log))) as Promise<WeeklyLog>,

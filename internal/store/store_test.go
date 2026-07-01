@@ -132,6 +132,26 @@ func TestUploadedImageReferencedFindsMarkdownReferences(t *testing.T) {
 	}
 }
 
+func TestFirstActivityDateUsesEarliestBusinessDate(t *testing.T) {
+	store := newTestStore(t)
+	issueID := insertTestIssue(t, store.db, "GCS-1", "In Progress", `[]`, "")
+	if _, err := store.db.Exec(`UPDATE issues SET started_at = ? WHERE id = ?`, "2026-06-22T00:00:00Z", issueID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.db.Exec(`INSERT INTO day_entries (date, content_md, created_at, updated_at) VALUES (?, ?, ?, ?)`,
+		"2026-06-15", "day note", "2026-06-30T00:00:00Z", "2026-06-30T00:00:00Z"); err != nil {
+		t.Fatal(err)
+	}
+
+	first, err := store.FirstActivityDate(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first != "2026-06-15" {
+		t.Fatalf("expected earliest activity date 2026-06-15, got %q", first)
+	}
+}
+
 func newTestStore(t *testing.T) *Store {
 	t.Helper()
 	db, err := sql.Open("sqlite", ":memory:")
