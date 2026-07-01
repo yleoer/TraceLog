@@ -54,12 +54,13 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, defineAsyncComponent, ref } from 'vue'
 import { NButton, NPopconfirm, useMessage } from 'naive-ui'
-import MarkdownEditor from './MarkdownEditor.vue'
 import MarkdownView from './MarkdownView.vue'
 import { formatDateTime } from '../utils/datetime'
 import { useDraftAutosave } from '../composables/useDraftAutosave'
+
+const MarkdownEditor = defineAsyncComponent(() => import('./MarkdownEditor.vue'))
 
 interface TimelineEvent {
   id: number

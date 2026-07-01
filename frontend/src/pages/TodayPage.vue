@@ -57,15 +57,15 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
-import { useMessage } from 'naive-ui'
+import { defineAsyncComponent, onMounted, ref } from 'vue'
+import { NButton, NSpin, useMessage } from 'naive-ui'
 import { api } from '../api/client'
-import MarkdownEditor from '../components/MarkdownEditor.vue'
 import StatusTag from '../components/StatusTag.vue'
 import DayWorkPanel from '../components/DayWorkPanel.vue'
 import { tempStatusLabel } from '../utils/tempTaskDisplay'
 import type { TodayWorkflow } from '../types'
 
+const MarkdownEditor = defineAsyncComponent(() => import('../components/MarkdownEditor.vue'))
 const message = useMessage()
 const loading = ref(false)
 const data = ref<TodayWorkflow>()

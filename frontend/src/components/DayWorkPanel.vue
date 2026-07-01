@@ -47,15 +47,15 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, defineAsyncComponent, ref } from 'vue'
 import { NButton, NPopconfirm, useMessage } from 'naive-ui'
 import { useRouter } from 'vue-router'
-import MarkdownEditor from './MarkdownEditor.vue'
 import MarkdownView from './MarkdownView.vue'
 import { api } from '../api/client'
 import { formatTime } from '../utils/datetime'
 import type { DayWork, DayEntry, DayActivity, DayComment } from '../types'
 
+const MarkdownEditor = defineAsyncComponent(() => import('./MarkdownEditor.vue'))
 const props = defineProps<{ day: DayWork }>()
 const emit = defineEmits<{ (e: 'changed'): void }>()
 const router = useRouter()

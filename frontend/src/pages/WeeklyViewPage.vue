@@ -123,11 +123,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
-import { useMessage } from 'naive-ui'
+import { computed, defineAsyncComponent, onMounted, ref, watch } from 'vue'
+import { NButton, NSelect, NSpin, useMessage } from 'naive-ui'
 import { useRoute, useRouter } from 'vue-router'
 import { api, downloadUrl } from '../api/client'
-import MarkdownEditor from '../components/MarkdownEditor.vue'
 import MarkdownView from '../components/MarkdownView.vue'
 import StatusTag from '../components/StatusTag.vue'
 import DayWorkPanel from '../components/DayWorkPanel.vue'
@@ -135,6 +134,7 @@ import { tempStatusLabel } from '../utils/tempTaskDisplay'
 import { formatDateTime } from '../utils/datetime'
 import type { WeekBounds, WeekView } from '../types'
 
+const MarkdownEditor = defineAsyncComponent(() => import('../components/MarkdownEditor.vue'))
 const route = useRoute()
 const router = useRouter()
 const message = useMessage()

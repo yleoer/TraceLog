@@ -75,7 +75,7 @@
 
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-import { useMessage } from 'naive-ui'
+import { NButton, NSpin, useMessage } from 'naive-ui'
 import { api } from '../api/client'
 import StatusTag from '../components/StatusTag.vue'
 import { tempStatusLabel } from '../utils/tempTaskDisplay'

@@ -129,7 +129,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
-import { NPopconfirm, useMessage } from 'naive-ui'
+import { NButton, NFormItem, NInput, NPopconfirm, NRadioButton, NRadioGroup, useMessage } from 'naive-ui'
 import { api, downloadUrl } from '../api/client'
 import type { AppSettings, UpdateInfo } from '../types'
 import { openExternalURL } from '../utils/openExternal'

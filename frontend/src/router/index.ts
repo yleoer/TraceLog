@@ -1,13 +1,14 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import DashboardPage from '../pages/DashboardPage.vue'
-import TodayPage from '../pages/TodayPage.vue'
-import IssueListPage from '../pages/IssueListPage.vue'
-import IssueDetailPage from '../pages/IssueDetailPage.vue'
-import TempTaskListPage from '../pages/TempTaskListPage.vue'
-import TempTaskDetailPage from '../pages/TempTaskDetailPage.vue'
-import WeeklyViewPage from '../pages/WeeklyViewPage.vue'
-import SearchPage from '../pages/SearchPage.vue'
-import SettingsPage from '../pages/SettingsPage.vue'
+
+const DashboardPage = () => import('../pages/DashboardPage.vue')
+const TodayPage = () => import('../pages/TodayPage.vue')
+const IssueListPage = () => import('../pages/IssueListPage.vue')
+const IssueDetailPage = () => import('../pages/IssueDetailPage.vue')
+const TempTaskListPage = () => import('../pages/TempTaskListPage.vue')
+const TempTaskDetailPage = () => import('../pages/TempTaskDetailPage.vue')
+const WeeklyViewPage = () => import('../pages/WeeklyViewPage.vue')
+const SearchPage = () => import('../pages/SearchPage.vue')
+const SettingsPage = () => import('../pages/SettingsPage.vue')
 
 const router = createRouter({
   history: createWebHistory(),

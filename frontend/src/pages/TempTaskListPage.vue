@@ -19,7 +19,7 @@
 
 <script setup lang="ts">
 import { h, onMounted, ref, watch } from 'vue'
-import { useMessage } from 'naive-ui'
+import { NButton, NDataTable, NInput, NSelect, useMessage } from 'naive-ui'
 import type { DataTableColumns } from 'naive-ui'
 import { useRouter } from 'vue-router'
 import { api } from '../api/client'

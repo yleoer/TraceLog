@@ -152,10 +152,21 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
-import { useMessage } from 'naive-ui'
+import {
+  NButton,
+  NCheckbox,
+  NCollapse,
+  NCollapseItem,
+  NDatePicker,
+  NInput,
+  NInputGroup,
+  NInputGroupLabel,
+  NPopconfirm,
+  NTag,
+  useMessage
+} from 'naive-ui'
 import { useRoute, useRouter } from 'vue-router'
 import { api, downloadUrl } from '../api/client'
-import MarkdownEditor from '../components/MarkdownEditor.vue'
 import MarkdownView from '../components/MarkdownView.vue'
 import CommentTimeline from '../components/CommentTimeline.vue'
 import StatusTag from '../components/StatusTag.vue'

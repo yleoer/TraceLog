@@ -44,7 +44,7 @@
 
 <script setup lang="ts">
 import { computed, h, ref, watch } from 'vue'
-import { NTag, useMessage } from 'naive-ui'
+import { NButton, NDataTable, NInput, NSelect, NTag, useMessage } from 'naive-ui'
 import type { DataTableColumns } from 'naive-ui'
 import { useRoute, useRouter } from 'vue-router'
 import { api } from '../api/client'
