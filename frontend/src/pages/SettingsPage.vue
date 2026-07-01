@@ -26,7 +26,7 @@
           >
             升级
           </n-button>
-          <a v-if="updateInfo?.release_url" :href="updateInfo.release_url" target="_blank" rel="noreferrer" class="text-xs text-blue-600 hover:text-blue-700">Release</a>
+          <a v-if="updateInfo?.release_url" href="#" class="text-xs text-blue-600 hover:text-blue-700" @click.prevent="openExternalURL(updateInfo.release_url)">Release</a>
         </div>
       </div>
       <p class="text-xs mt-3" :class="updateStatusClass">{{ updateStatusText }}</p>
@@ -132,6 +132,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { NPopconfirm, useMessage } from 'naive-ui'
 import { api, downloadUrl } from '../api/client'
 import type { AppSettings, UpdateInfo } from '../types'
+import { openExternalURL } from '../utils/openExternal'
 
 const message = useMessage()
 const saving = ref(false)

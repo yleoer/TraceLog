@@ -44,7 +44,7 @@
         </div>
         <div class="col-span-full border-b border-gray-100 pb-3">
           <label class="field-label">地址</label>
-          <a v-if="jiraAddress" :href="jiraAddress" target="_blank" rel="noreferrer" class="text-sm text-teal-700 hover:underline break-all">{{ jiraAddress }}</a>
+          <a v-if="jiraAddress" href="#" class="text-sm text-teal-700 hover:underline break-all" @click.prevent="openExternalURL(jiraAddress)">{{ jiraAddress }}</a>
           <span v-else class="text-sm text-gray-400">-</span>
         </div>
         <div class="border-b border-gray-100 pb-3">
@@ -164,6 +164,7 @@ import PriorityTag from '../components/PriorityTag.vue'
 import type { Issue, IssueEvent, IssueTodo, Link } from '../types'
 import { parseJiraMeta } from '../utils/jiraDisplay'
 import { formatDateTime as sharedFormatDateTime } from '../utils/datetime'
+import { openExternalURL } from '../utils/openExternal'
 
 const ATLASSIAN_BASE_URL = 'https://axyomcore.atlassian.net'
 

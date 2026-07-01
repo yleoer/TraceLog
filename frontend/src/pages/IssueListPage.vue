@@ -54,6 +54,7 @@ import StatusTag from '../components/StatusTag.vue'
 import TypeTag from '../components/TypeTag.vue'
 import PriorityTag from '../components/PriorityTag.vue'
 import { formatDateTime } from '../utils/datetime'
+import { openExternalClick } from '../utils/openExternal'
 
 const route = useRoute()
 const router = useRouter()
@@ -117,7 +118,7 @@ const columns: DataTableColumns<Issue> = [
     minWidth: 200,
     render: (row) => {
       const href = firstJiraLink(row)
-      return href ? h('a', { class: 'ext-link', href, target: '_blank', rel: 'noreferrer' }, href) : '-'
+      return href ? h('a', { class: 'ext-link', href, onClick: openExternalClick(href) }, href) : '-'
     }
   },
   {
