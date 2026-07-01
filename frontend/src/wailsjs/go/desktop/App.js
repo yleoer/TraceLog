@@ -106,6 +106,10 @@ export function GetTempTask(arg1) {
   return window['go']['desktop']['App']['GetTempTask'](arg1);
 }
 
+export function GetUpdateInfo() {
+  return window['go']['desktop']['App']['GetUpdateInfo']();
+}
+
 export function GetUploadedImageDataURL(arg1) {
   return window['go']['desktop']['App']['GetUploadedImageDataURL'](arg1);
 }
@@ -120,6 +124,10 @@ export function GetWeekBounds() {
 
 export function ImportJiraIssue(arg1) {
   return window['go']['desktop']['App']['ImportJiraIssue'](arg1);
+}
+
+export function InstallUpdate() {
+  return window['go']['desktop']['App']['InstallUpdate']();
 }
 
 export function ListIssueEvents(arg1) {

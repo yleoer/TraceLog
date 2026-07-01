@@ -30,6 +30,48 @@ export namespace desktop {
 	        this.canceled = source["canceled"];
 	    }
 	}
+	export class UpdateInfo {
+	    current_version: string;
+	    latest_version: string;
+	    has_update: boolean;
+	    release_url: string;
+	    asset_name: string;
+	    asset_url: string;
+	    published_at: string;
+	    release_notes: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new UpdateInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.current_version = source["current_version"];
+	        this.latest_version = source["latest_version"];
+	        this.has_update = source["has_update"];
+	        this.release_url = source["release_url"];
+	        this.asset_name = source["asset_name"];
+	        this.asset_url = source["asset_url"];
+	        this.published_at = source["published_at"];
+	        this.release_notes = source["release_notes"];
+	    }
+	}
+	export class UpdateInstallResult {
+	    started: boolean;
+	    path: string;
+	    message: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new UpdateInstallResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.started = source["started"];
+	        this.path = source["path"];
+	        this.message = source["message"];
+	    }
+	}
 
 }
 

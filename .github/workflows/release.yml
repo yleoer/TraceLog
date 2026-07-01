@@ -89,7 +89,7 @@ jobs:
       - name: Build Wails package
         shell: bash
         run: |
-          wails build -clean -trimpath -platform "${{ matrix.platform }}" ${{ matrix.wails_args }}
+          wails build -clean -trimpath -platform "${{ matrix.platform }}" -ldflags "-X tracelog/internal/desktop.AppVersion=${RELEASE_LABEL}" ${{ matrix.wails_args }}
 
       - name: Package Windows artifact
         if: matrix.package == 'nsis' && runner.os == 'Windows'
@@ -200,5 +200,5 @@ jobs:
           TAG_NAME: ${{ github.ref_name }}
         run: |
           gh release view "$TAG_NAME" >/dev/null 2>&1 || \
-            gh release create "$TAG_NAME" --title "$TAG_NAME" --notes "TraceLog release $TAG_NAME"
+            gh release create "$TAG_NAME" --title "$TAG_NAME" --generate-notes
           gh release upload "$TAG_NAME" release-assets/* --clobber

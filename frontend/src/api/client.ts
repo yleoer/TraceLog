@@ -10,6 +10,8 @@ import type {
   TempTask,
   TempTaskEvent,
   TodayWorkflow,
+  UpdateInfo,
+  UpdateInstallResult,
   UploadedImageData,
   UploadedImage,
   UploadedImageCleanup,
@@ -109,6 +111,8 @@ export const api = {
   getSettings: () => nativeCall(() => DesktopApp.GetSettings()) as Promise<AppSettings>,
   updateSettings: (settings: Partial<AppSettings>) =>
     nativeCall(() => DesktopApp.UpdateSettings(service.AppSettings.createFrom(settings))) as Promise<AppSettings>,
+  getUpdateInfo: () => nativeCall(() => DesktopApp.GetUpdateInfo()) as Promise<UpdateInfo>,
+  installUpdate: () => nativeCall(() => DesktopApp.InstallUpdate()) as Promise<UpdateInstallResult>,
   listIssues: (params: QueryParams) => nativeCall(() => DesktopApp.ListIssues(service.IssueFilter.createFrom(issueFilter(params)))) as Promise<Issue[]>,
   importJiraIssue: (jiraKey: string) => nativeCall(() => DesktopApp.ImportJiraIssue(jiraKey)) as Promise<Issue>,
   createIssue: (issue: Partial<Issue>) => nativeCall(() => DesktopApp.CreateIssue(service.Issue.createFrom(issue))) as Promise<Issue>,

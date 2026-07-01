@@ -55,6 +55,8 @@ export function GetSettings():Promise<service.AppSettings>;
 
 export function GetTempTask(arg1:number):Promise<service.TempTask>;
 
+export function GetUpdateInfo():Promise<desktop.UpdateInfo>;
+
 export function GetUploadedImageDataURL(arg1:string):Promise<service.UploadedImageData>;
 
 export function GetWeek(arg1:string):Promise<service.WeekView>;
@@ -62,6 +64,8 @@ export function GetWeek(arg1:string):Promise<service.WeekView>;
 export function GetWeekBounds():Promise<service.WeekBounds>;
 
 export function ImportJiraIssue(arg1:string):Promise<service.Issue>;
+
+export function InstallUpdate():Promise<desktop.UpdateInstallResult>;
 
 export function ListIssueEvents(arg1:string):Promise<Array<service.IssueEvent>>;
 

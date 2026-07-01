@@ -218,3 +218,20 @@ export interface UploadedImageCleanup {
   failed: number
   freed_bytes: number
 }
+
+export interface UpdateInfo {
+  current_version: string
+  latest_version: string
+  has_update: boolean
+  release_url: string
+  asset_name: string
+  asset_url: string
+  published_at: string
+  release_notes: string
+}
+
+export interface UpdateInstallResult {
+  started: boolean
+  path: string
+  message: string
+}

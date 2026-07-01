@@ -6,6 +6,33 @@
     </div>
 
     <div class="card">
+      <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h2 class="card-title mb-2">应用更新</h2>
+          <div class="space-y-1 text-sm text-gray-600">
+            <div>当前版本：<span class="font-medium text-gray-900">{{ updateInfo?.current_version || '-' }}</span></div>
+            <div>最新版本：<span class="font-medium text-gray-900">{{ updateInfo?.latest_version || '-' }}</span></div>
+            <div v-if="updateInfo?.asset_name" class="text-xs text-gray-400">{{ updateInfo.asset_name }}</div>
+          </div>
+        </div>
+        <div class="flex flex-wrap items-center gap-2">
+          <n-button size="small" :loading="checkingUpdate" @click="checkUpdate">检查更新</n-button>
+          <n-button
+            size="small"
+            type="primary"
+            :disabled="!updateInfo?.has_update || !updateInfo?.asset_url"
+            :loading="installingUpdate"
+            @click="installUpdate"
+          >
+            升级
+          </n-button>
+          <a v-if="updateInfo?.release_url" :href="updateInfo.release_url" target="_blank" rel="noreferrer" class="text-xs text-blue-600 hover:text-blue-700">Release</a>
+        </div>
+      </div>
+      <p class="text-xs mt-3" :class="updateStatusClass">{{ updateStatusText }}</p>
+    </div>
+
+    <div class="card">
       <h2 class="card-title">Jira</h2>
       <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
         <n-form-item label="Base URL" label-placement="top">
@@ -101,14 +128,17 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { NPopconfirm, useMessage } from 'naive-ui'
 import { api, downloadUrl } from '../api/client'
-import type { AppSettings } from '../types'
+import type { AppSettings, UpdateInfo } from '../types'
 
 const message = useMessage()
 const saving = ref(false)
 const cleaningImages = ref(false)
+const checkingUpdate = ref(false)
+const installingUpdate = ref(false)
+const updateInfo = ref<UpdateInfo | null>(null)
 
 const form = reactive<AppSettings>({
   jira: { base_url: '', email: '', api_token: '', has_api_token: false },
@@ -118,6 +148,15 @@ const form = reactive<AppSettings>({
   prompts: { issue_summary: '', weekly_summary: '' }
 })
 
+const updateStatusText = computed(() => {
+  if (!updateInfo.value) return '点击检查更新以获取 GitHub Release 最新版本。'
+  if (updateInfo.value.has_update && updateInfo.value.asset_url) return '发现新版本，可以直接下载并启动安装程序。'
+  if (updateInfo.value.has_update) return '发现新版本，但当前平台没有可用安装包。'
+  return '当前已是最新版本。'
+})
+
+const updateStatusClass = computed(() => updateInfo.value?.has_update ? 'text-blue-600' : 'text-gray-400')
+
 async function loadSettings() {
   try {
     const settings = await api.getSettings()
@@ -125,6 +164,34 @@ async function loadSettings() {
     clearSecrets()
   } catch (error) {
     message.error((error as Error).message)
+  }
+}
+
+async function checkUpdate() {
+  checkingUpdate.value = true
+  try {
+    updateInfo.value = await api.getUpdateInfo()
+    if (updateInfo.value.has_update) {
+      message.success(`发现新版本 ${updateInfo.value.latest_version}`)
+      return
+    }
+    message.success('当前已是最新版本')
+  } catch (error) {
+    message.error((error as Error).message)
+  } finally {
+    checkingUpdate.value = false
+  }
+}
+
+async function installUpdate() {
+  installingUpdate.value = true
+  try {
+    const result = await api.installUpdate()
+    if (result.message) message.success(result.message)
+  } catch (error) {
+    message.error((error as Error).message)
+  } finally {
+    installingUpdate.value = false
   }
 }
 
@@ -171,7 +238,10 @@ function formatBytes(bytes: number) {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`
 }
 
-onMounted(loadSettings)
+onMounted(async () => {
+  await loadSettings()
+  await checkUpdate()
+})
 </script>
 
 <style scoped>
