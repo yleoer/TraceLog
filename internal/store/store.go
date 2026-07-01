@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"html"
 	"strings"
+	"time"
 
 	"tracelog/internal/service"
 )
@@ -14,6 +15,22 @@ import (
 type Store struct {
 	db *sql.DB
 }
+
+const activityEventsSchema = `
+CREATE TABLE IF NOT EXISTS activity_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  source TEXT NOT NULL,
+  ref_id INTEGER NOT NULL,
+  ref_key TEXT NOT NULL DEFAULT '',
+  ref_title TEXT NOT NULL,
+  event_type TEXT NOT NULL,
+  content_md TEXT NOT NULL DEFAULT '',
+  happened_at TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_activity_events_happened_at ON activity_events(happened_at);
+CREATE INDEX IF NOT EXISTS idx_activity_events_ref ON activity_events(source, ref_id);`
 
 type eventTable struct {
 	name     string
@@ -37,6 +54,11 @@ var (
 
 func New(database *sql.DB) *Store {
 	return &Store{db: database}
+}
+
+func (s *Store) ensureActivityEventsTable(ctx context.Context) error {
+	_, err := s.db.ExecContext(ctx, activityEventsSchema)
+	return err
 }
 
 func (s *Store) ListIssues(ctx context.Context, filter service.IssueFilter) ([]service.Issue, error) {
@@ -115,16 +137,32 @@ func (s *Store) DeleteIssue(ctx context.Context, jiraKey string) error {
 	if err != nil {
 		return err
 	}
-	if _, err := s.db.ExecContext(ctx, `DELETE FROM search_index WHERE entity_type = 'issue_event' AND entity_id IN (SELECT CAST(id AS TEXT) FROM issue_events WHERE issue_id = ?)`, issue.ID); err != nil {
+	if err := s.ensureActivityEventsTable(ctx); err != nil {
 		return err
 	}
-	if _, err := s.db.ExecContext(ctx, `DELETE FROM search_index WHERE entity_type = 'issue_todo' AND entity_id LIKE ?`, issue.JiraKey+":%"); err != nil {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
 		return err
 	}
-	if _, err := s.db.ExecContext(ctx, `DELETE FROM issues WHERE jira_key = ?`, jiraKey); err != nil {
+	defer tx.Rollback()
+	now := time.Now().UTC().Format(time.RFC3339)
+	if _, err := tx.ExecContext(ctx, `INSERT INTO activity_events (source, ref_id, ref_key, ref_title, event_type, content_md, happened_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		"issue", issue.ID, issue.JiraKey, issue.Title, "deleted", "删除 Issue", now, now, now); err != nil {
 		return err
 	}
-	return s.DeleteSearchIndex(ctx, "issue", issue.JiraKey)
+	if _, err := tx.ExecContext(ctx, `DELETE FROM search_index WHERE entity_type = 'issue_event' AND entity_id IN (SELECT CAST(id AS TEXT) FROM issue_events WHERE issue_id = ?)`, issue.ID); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM search_index WHERE entity_type = 'issue_todo' AND entity_id LIKE ?`, issue.JiraKey+":%"); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM search_index WHERE entity_type = 'issue' AND entity_id = ?`, issue.JiraKey); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM issues WHERE jira_key = ?`, jiraKey); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (s *Store) UploadedImageReferenced(ctx context.Context, url string) (bool, error) {
@@ -361,10 +399,30 @@ func (s *Store) UpdateTempTask(ctx context.Context, task service.TempTask) (serv
 }
 
 func (s *Store) DeleteTempTask(ctx context.Context, id int64) error {
-	if _, err := s.db.ExecContext(ctx, `DELETE FROM temp_tasks WHERE id = ?`, id); err != nil {
+	task, err := s.GetTempTask(ctx, id)
+	if err != nil {
 		return err
 	}
-	return s.DeleteSearchIndex(ctx, "temp_task", fmt.Sprint(id))
+	if err := s.ensureActivityEventsTable(ctx); err != nil {
+		return err
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	now := time.Now().UTC().Format(time.RFC3339)
+	if _, err := tx.ExecContext(ctx, `INSERT INTO activity_events (source, ref_id, ref_key, ref_title, event_type, content_md, happened_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		"temp_task", task.ID, "", task.Title, "deleted", "删除临时需求", now, now, now); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM temp_tasks WHERE id = ?`, id); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM search_index WHERE entity_type = 'temp_task' AND entity_id = ?`, fmt.Sprint(id)); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (s *Store) GetWeeklyLog(ctx context.Context, week string) (service.WeeklyLog, error) {
@@ -399,6 +457,9 @@ func (s *Store) ListWeeklyLogs(ctx context.Context) ([]service.WeeklyLog, error)
 }
 
 func (s *Store) FirstActivityDate(ctx context.Context) (string, error) {
+	if err := s.ensureActivityEventsTable(ctx); err != nil {
+		return "", err
+	}
 	var first sql.NullString
 	err := s.db.QueryRowContext(ctx, `
 SELECT MIN(date_value) FROM (
@@ -413,6 +474,7 @@ SELECT MIN(date_value) FROM (
   UNION ALL SELECT substr(started_at, 1, 10) FROM temp_tasks WHERE started_at <> ''
   UNION ALL SELECT substr(completed_at, 1, 10) FROM temp_tasks WHERE completed_at <> ''
   UNION ALL SELECT substr(happened_at, 1, 10) FROM temp_task_events WHERE happened_at <> ''
+  UNION ALL SELECT substr(happened_at, 1, 10) FROM activity_events WHERE happened_at <> ''
   UNION ALL SELECT date FROM day_entries WHERE date <> ''
 )`).Scan(&first)
 	if err != nil {
@@ -460,7 +522,20 @@ func (s *Store) ListTempTasksUpdatedBetween(ctx context.Context, start string, e
 }
 
 func (s *Store) ListIssueCommentsBetween(ctx context.Context, start string, end string) ([]service.DayComment, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT e.id, e.event_type, e.content_md, e.happened_at, i.id, i.jira_key, i.title FROM issue_events e JOIN issues i ON e.issue_id = i.id WHERE e.happened_at >= ? AND e.happened_at < ? ORDER BY e.happened_at ASC`, start, end)
+	if err := s.ensureActivityEventsTable(ctx); err != nil {
+		return nil, err
+	}
+	rows, err := s.db.QueryContext(ctx, `
+SELECT e.id, e.event_type, e.content_md, e.happened_at, i.id, i.jira_key, i.title
+FROM issue_events e
+JOIN issues i ON e.issue_id = i.id
+WHERE e.happened_at >= ? AND e.happened_at < ?
+UNION ALL
+SELECT 0, 'created', '添加 Issue', i.created_at, i.id, i.jira_key, i.title
+FROM issues i
+WHERE i.created_at >= ? AND i.created_at < ?
+  AND NOT EXISTS (SELECT 1 FROM activity_events a WHERE a.source = 'issue' AND a.ref_id = i.id AND a.event_type = 'created')
+ORDER BY 4 ASC`, start, end, start, end)
 	if err != nil {
 		return nil, err
 	}
@@ -477,7 +552,20 @@ func (s *Store) ListIssueCommentsBetween(ctx context.Context, start string, end 
 }
 
 func (s *Store) ListTempTaskCommentsBetween(ctx context.Context, start string, end string) ([]service.DayComment, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT e.id, e.event_type, e.content_md, e.happened_at, t.id, t.title FROM temp_task_events e JOIN temp_tasks t ON e.temp_task_id = t.id WHERE e.happened_at >= ? AND e.happened_at < ? ORDER BY e.happened_at ASC`, start, end)
+	if err := s.ensureActivityEventsTable(ctx); err != nil {
+		return nil, err
+	}
+	rows, err := s.db.QueryContext(ctx, `
+SELECT e.id, e.event_type, e.content_md, e.happened_at, t.id, t.title
+FROM temp_task_events e
+JOIN temp_tasks t ON e.temp_task_id = t.id
+WHERE e.happened_at >= ? AND e.happened_at < ?
+UNION ALL
+SELECT 0, 'created', '添加临时需求', t.created_at, t.id, t.title
+FROM temp_tasks t
+WHERE t.created_at >= ? AND t.created_at < ?
+  AND NOT EXISTS (SELECT 1 FROM activity_events a WHERE a.source = 'temp_task' AND a.ref_id = t.id AND a.event_type = 'created')
+ORDER BY 4 ASC`, start, end, start, end)
 	if err != nil {
 		return nil, err
 	}
@@ -491,6 +579,35 @@ func (s *Store) ListTempTaskCommentsBetween(ctx context.Context, start string, e
 		comments = append(comments, c)
 	}
 	return comments, rows.Err()
+}
+
+func (s *Store) ListActivityEventsBetween(ctx context.Context, start string, end string) ([]service.DayComment, error) {
+	if err := s.ensureActivityEventsTable(ctx); err != nil {
+		return nil, err
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT id, source, ref_id, ref_key, ref_title, event_type, content_md, happened_at FROM activity_events WHERE happened_at >= ? AND happened_at < ? ORDER BY happened_at ASC`, start, end)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	events := []service.DayComment{}
+	for rows.Next() {
+		var event service.DayComment
+		if err := rows.Scan(&event.EventID, &event.Source, &event.RefID, &event.RefKey, &event.RefTitle, &event.EventType, &event.ContentMD, &event.HappenedAt); err != nil {
+			return nil, err
+		}
+		events = append(events, event)
+	}
+	return events, rows.Err()
+}
+
+func (s *Store) CreateActivityEvent(ctx context.Context, event service.DayComment) error {
+	if err := s.ensureActivityEventsTable(ctx); err != nil {
+		return err
+	}
+	_, err := s.db.ExecContext(ctx, `INSERT INTO activity_events (source, ref_id, ref_key, ref_title, event_type, content_md, happened_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		event.Source, event.RefID, event.RefKey, event.RefTitle, event.EventType, event.ContentMD, event.HappenedAt, event.HappenedAt, event.HappenedAt)
+	return err
 }
 
 func (s *Store) ListDayEntriesBetween(ctx context.Context, startDate string, endDate string) ([]service.DayEntry, error) {

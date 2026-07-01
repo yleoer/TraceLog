@@ -152,6 +152,29 @@ func TestFirstActivityDateUsesEarliestBusinessDate(t *testing.T) {
 	}
 }
 
+func TestListActivityEventsBetweenReturnsDeletedRefs(t *testing.T) {
+	store := newTestStore(t)
+	event := service.DayComment{
+		Source:     "temp_task",
+		RefID:      42,
+		RefTitle:   "Deleted task",
+		EventType:  "deleted",
+		ContentMD:  "删除临时需求",
+		HappenedAt: "2026-06-23T10:00:00Z",
+	}
+	if err := store.CreateActivityEvent(context.Background(), event); err != nil {
+		t.Fatal(err)
+	}
+
+	events, err := store.ListActivityEventsBetween(context.Background(), "2026-06-23T00:00:00Z", "2026-06-24T00:00:00Z")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 1 || events[0].EventType != "deleted" || events[0].RefTitle != "Deleted task" {
+		t.Fatalf("expected deleted activity event, got %#v", events)
+	}
+}
+
 func newTestStore(t *testing.T) *Store {
 	t.Helper()
 	db, err := sql.Open("sqlite", ":memory:")
@@ -240,6 +263,18 @@ CREATE TABLE day_entries (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   date TEXT NOT NULL,
   content_md TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE TABLE activity_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  source TEXT NOT NULL,
+  ref_id INTEGER NOT NULL,
+  ref_key TEXT NOT NULL DEFAULT '',
+  ref_title TEXT NOT NULL,
+  event_type TEXT NOT NULL,
+  content_md TEXT NOT NULL DEFAULT '',
+  happened_at TEXT NOT NULL,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );`

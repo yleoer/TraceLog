@@ -86,6 +86,19 @@ CREATE TABLE IF NOT EXISTS day_entries (
   updated_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS activity_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  source TEXT NOT NULL,
+  ref_id INTEGER NOT NULL,
+  ref_key TEXT NOT NULL DEFAULT '',
+  ref_title TEXT NOT NULL,
+  event_type TEXT NOT NULL,
+  content_md TEXT NOT NULL DEFAULT '',
+  happened_at TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
 CREATE VIRTUAL TABLE IF NOT EXISTS search_index USING fts5(
   entity_type UNINDEXED,
   entity_id UNINDEXED,
@@ -109,9 +122,12 @@ CREATE INDEX IF NOT EXISTS idx_temp_tasks_status ON temp_tasks(status);
 CREATE INDEX IF NOT EXISTS idx_temp_task_events_task ON temp_task_events(temp_task_id);
 CREATE INDEX IF NOT EXISTS idx_weekly_logs_week ON weekly_logs(week);
 CREATE INDEX IF NOT EXISTS idx_day_entries_date ON day_entries(date);
+CREATE INDEX IF NOT EXISTS idx_activity_events_happened_at ON activity_events(happened_at);
+CREATE INDEX IF NOT EXISTS idx_activity_events_ref ON activity_events(source, ref_id);
 
 -- +goose Down
 DROP TABLE IF EXISTS search_index;
+DROP TABLE IF EXISTS activity_events;
 DROP TABLE IF EXISTS day_entries;
 DROP TABLE IF EXISTS weekly_logs;
 DROP TABLE IF EXISTS temp_task_events;

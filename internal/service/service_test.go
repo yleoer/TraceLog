@@ -219,6 +219,27 @@ func TestCleanupUnusedUploadedImagesMissingDirectory(t *testing.T) {
 	}
 }
 
+func TestBucketByDayGroupsCommentsByReference(t *testing.T) {
+	days := []time.Time{time.Date(2026, 6, 23, 0, 0, 0, 0, time.UTC)}
+	comments := []DayComment{
+		{Source: "issue", RefID: 1, RefKey: "GCS-1", RefTitle: "Issue one", EventType: "created", ContentMD: "添加 Issue", HappenedAt: "2026-06-23T09:00:00Z"},
+		{Source: "issue", RefID: 1, RefKey: "GCS-1", RefTitle: "Issue one", EventType: "note", ContentMD: "comment", HappenedAt: "2026-06-23T10:00:00Z"},
+		{Source: "temp_task", RefID: 2, RefTitle: "Task one", EventType: "deleted", ContentMD: "删除临时需求", HappenedAt: "2026-06-23T11:00:00Z"},
+	}
+
+	result := bucketByDay(time.UTC, days, comments, nil)
+
+	if len(result) != 1 || len(result[0].Activities) != 2 {
+		t.Fatalf("expected two grouped activities, got %#v", result)
+	}
+	if len(result[0].Activities[0].Comments) != 2 {
+		t.Fatalf("expected issue comments grouped together, got %#v", result[0].Activities[0])
+	}
+	if result[0].Activities[1].Comments[0].EventType != "deleted" {
+		t.Fatalf("expected deleted temp task activity, got %#v", result[0].Activities[1])
+	}
+}
+
 type uploadReferenceRepo struct {
 	Repository
 	url string

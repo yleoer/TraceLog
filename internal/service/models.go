@@ -100,6 +100,16 @@ type DayComment struct {
 	URL        string `json:"url"`
 }
 
+type DayActivity struct {
+	Source    string       `json:"source"`
+	RefID     int64        `json:"ref_id"`
+	RefKey    string       `json:"ref_key"`
+	RefTitle  string       `json:"ref_title"`
+	URL       string       `json:"url"`
+	StartedAt string       `json:"started_at"`
+	Comments  []DayComment `json:"comments"`
+}
+
 type DayEntry struct {
 	ID        int64  `json:"id"`
 	Date      string `json:"date"`
@@ -109,10 +119,11 @@ type DayEntry struct {
 }
 
 type DayWork struct {
-	Date     string       `json:"date"`
-	Weekday  string       `json:"weekday"`
-	Comments []DayComment `json:"comments"`
-	Entries  []DayEntry   `json:"entries"`
+	Date       string        `json:"date"`
+	Weekday    string        `json:"weekday"`
+	Comments   []DayComment  `json:"comments"`
+	Activities []DayActivity `json:"activities"`
+	Entries    []DayEntry    `json:"entries"`
 }
 
 type WeekView struct {

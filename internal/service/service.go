@@ -73,9 +73,11 @@ type Repository interface {
 	DeleteTempTaskEvent(context.Context, int64) error
 	ListIssueCommentsBetween(context.Context, string, string) ([]DayComment, error)
 	ListTempTaskCommentsBetween(context.Context, string, string) ([]DayComment, error)
+	ListActivityEventsBetween(context.Context, string, string) ([]DayComment, error)
 	ListDayEntriesBetween(context.Context, string, string) ([]DayEntry, error)
 	CreateDayEntry(context.Context, DayEntry) (DayEntry, error)
 	DeleteDayEntry(context.Context, int64) error
+	CreateActivityEvent(context.Context, DayComment) error
 	GetWeeklyLog(context.Context, string) (WeeklyLog, error)
 	UpsertWeeklyLog(context.Context, WeeklyLog) (WeeklyLog, error)
 	ListWeeklyLogs(context.Context) ([]WeeklyLog, error)
@@ -134,6 +136,9 @@ func (s *Service) CreateIssue(ctx context.Context, issue Issue) (Issue, error) {
 	issue.UpdatedAt = now
 	created, err := s.repo.CreateIssue(ctx, issue)
 	if err != nil {
+		return Issue{}, err
+	}
+	if err := s.recordIssueActivity(ctx, created, "created", "添加 Issue"); err != nil {
 		return Issue{}, err
 	}
 	return created, s.indexIssue(ctx, created)
@@ -386,6 +391,9 @@ func (s *Service) CreateTempTask(ctx context.Context, task TempTask) (TempTask, 
 	if err != nil {
 		return TempTask{}, err
 	}
+	if err := s.recordTempTaskActivity(ctx, created, "created", "添加临时需求"); err != nil {
+		return TempTask{}, err
+	}
 	return created, s.indexTempTask(ctx, created)
 }
 
@@ -411,6 +419,31 @@ func (s *Service) UpdateTempTask(ctx context.Context, id int64, task TempTask) (
 
 func (s *Service) DeleteTempTask(ctx context.Context, id int64) error {
 	return mapError(s.repo.DeleteTempTask(ctx, id))
+}
+
+func (s *Service) recordIssueActivity(ctx context.Context, issue Issue, eventType string, content string) error {
+	now := nowString()
+	return s.repo.CreateActivityEvent(ctx, DayComment{
+		Source:     "issue",
+		RefID:      issue.ID,
+		RefKey:     issue.JiraKey,
+		RefTitle:   issue.Title,
+		EventType:  eventType,
+		ContentMD:  content,
+		HappenedAt: now,
+	})
+}
+
+func (s *Service) recordTempTaskActivity(ctx context.Context, task TempTask, eventType string, content string) error {
+	now := nowString()
+	return s.repo.CreateActivityEvent(ctx, DayComment{
+		Source:     "temp_task",
+		RefID:      task.ID,
+		RefTitle:   task.Title,
+		EventType:  eventType,
+		ContentMD:  content,
+		HappenedAt: now,
+	})
 }
 
 func (s *Service) ListWeeklyLogs(ctx context.Context) ([]WeeklyLog, error) {
@@ -1545,11 +1578,16 @@ func (s *Service) buildDays(ctx context.Context, startStr string, endStr string,
 	if err != nil {
 		return nil, err
 	}
+	activityEvents, err := s.repo.ListActivityEventsBetween(ctx, startStr, endStr)
+	if err != nil {
+		return nil, err
+	}
 	dayEntries, err := s.repo.ListDayEntriesBetween(ctx, days[0].Format("2006-01-02"), days[len(days)-1].Format("2006-01-02"))
 	if err != nil {
 		return nil, err
 	}
-	return bucketByDay(s.loc, days, append(issueComments, tempComments...), dayEntries), nil
+	comments := append(append(issueComments, tempComments...), activityEvents...)
+	return bucketByDay(s.loc, days, comments, dayEntries), nil
 }
 
 func bucketByDay(loc *time.Location, days []time.Time, comments []DayComment, entries []DayEntry) []DayWork {
@@ -1566,12 +1604,42 @@ func bucketByDay(loc *time.Location, days []time.Time, comments []DayComment, en
 			result[i].Comments = append(result[i].Comments, c)
 		}
 	}
+	for i := range result {
+		result[i].Activities = groupDayActivities(result[i].Comments)
+	}
 	for _, e := range entries {
 		if i, ok := index[e.Date]; ok {
 			result[i].Entries = append(result[i].Entries, e)
 		}
 	}
 	return result
+}
+
+func groupDayActivities(comments []DayComment) []DayActivity {
+	activities := []DayActivity{}
+	index := map[string]int{}
+	for _, c := range comments {
+		key := fmt.Sprintf("%s:%d:%s", c.Source, c.RefID, c.RefKey)
+		i, ok := index[key]
+		if !ok {
+			activity := DayActivity{
+				Source:   c.Source,
+				RefID:    c.RefID,
+				RefKey:   c.RefKey,
+				RefTitle: c.RefTitle,
+				URL:      c.URL,
+				Comments: []DayComment{},
+			}
+			activities = append(activities, activity)
+			i = len(activities) - 1
+			index[key] = i
+		}
+		activities[i].Comments = append(activities[i].Comments, c)
+		if activities[i].StartedAt == "" || c.HappenedAt < activities[i].StartedAt {
+			activities[i].StartedAt = c.HappenedAt
+		}
+	}
+	return activities
 }
 
 func commentDayString(happenedAt string, loc *time.Location) string {

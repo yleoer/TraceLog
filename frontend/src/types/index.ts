@@ -98,6 +98,16 @@ export interface DayComment {
   url: string
 }
 
+export interface DayActivity {
+  source: string
+  ref_id: number
+  ref_key: string
+  ref_title: string
+  url: string
+  started_at: string
+  comments: DayComment[]
+}
+
 export interface DayEntry {
   id: number
   date: string
@@ -110,6 +120,7 @@ export interface DayWork {
   date: string
   weekday: string
   comments: DayComment[]
+  activities: DayActivity[]
   entries: DayEntry[]
 }
 
