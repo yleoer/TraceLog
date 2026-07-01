@@ -32,6 +32,63 @@ CREATE TABLE IF NOT EXISTS activity_events (
 CREATE INDEX IF NOT EXISTS idx_activity_events_happened_at ON activity_events(happened_at);
 CREATE INDEX IF NOT EXISTS idx_activity_events_ref ON activity_events(source, ref_id);`
 
+const performanceSchema = `
+CREATE TABLE IF NOT EXISTS issue_tags (
+  issue_id INTEGER NOT NULL,
+  tag TEXT NOT NULL,
+  PRIMARY KEY (issue_id, tag),
+  FOREIGN KEY (issue_id) REFERENCES issues(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS temp_task_tags (
+  temp_task_id INTEGER NOT NULL,
+  tag TEXT NOT NULL,
+  PRIMARY KEY (temp_task_id, tag),
+  FOREIGN KEY (temp_task_id) REFERENCES temp_tasks(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS search_index_refs (
+  entity_type TEXT NOT NULL,
+  entity_id TEXT NOT NULL,
+  search_rowid INTEGER NOT NULL UNIQUE,
+  PRIMARY KEY (entity_type, entity_id)
+);
+CREATE TABLE IF NOT EXISTS app_schema_meta (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_issues_created_at ON issues(created_at);
+CREATE INDEX IF NOT EXISTS idx_issues_updated_at ON issues(updated_at);
+CREATE INDEX IF NOT EXISTS idx_issues_status ON issues(status);
+CREATE INDEX IF NOT EXISTS idx_issues_status_updated_at ON issues(status, updated_at);
+CREATE INDEX IF NOT EXISTS idx_issues_started_at ON issues(started_at);
+CREATE INDEX IF NOT EXISTS idx_issues_completed_at ON issues(completed_at);
+CREATE INDEX IF NOT EXISTS idx_issue_events_issue_id ON issue_events(issue_id);
+CREATE INDEX IF NOT EXISTS idx_issue_events_happened_at ON issue_events(happened_at);
+CREATE INDEX IF NOT EXISTS idx_issue_events_issue_happened_at ON issue_events(issue_id, happened_at, created_at);
+CREATE INDEX IF NOT EXISTS idx_issue_todos_issue_id ON issue_todos(issue_id);
+CREATE INDEX IF NOT EXISTS idx_issue_todos_due_at ON issue_todos(due_at);
+CREATE INDEX IF NOT EXISTS idx_issue_todos_done ON issue_todos(done);
+CREATE INDEX IF NOT EXISTS idx_issue_todos_updated_at ON issue_todos(updated_at);
+CREATE INDEX IF NOT EXISTS idx_issue_todos_done_updated_at ON issue_todos(done, updated_at);
+CREATE INDEX IF NOT EXISTS idx_issue_todos_done_due_updated_at ON issue_todos(done, due_at, updated_at);
+CREATE INDEX IF NOT EXISTS idx_issue_todos_issue_done_due_updated_at ON issue_todos(issue_id, done, due_at, updated_at);
+CREATE INDEX IF NOT EXISTS idx_issue_tags_tag_issue ON issue_tags(tag, issue_id);
+CREATE INDEX IF NOT EXISTS idx_temp_tasks_created_at ON temp_tasks(created_at);
+CREATE INDEX IF NOT EXISTS idx_temp_tasks_updated_at ON temp_tasks(updated_at);
+CREATE INDEX IF NOT EXISTS idx_temp_tasks_status ON temp_tasks(status);
+CREATE INDEX IF NOT EXISTS idx_temp_tasks_status_updated_at ON temp_tasks(status, updated_at);
+CREATE INDEX IF NOT EXISTS idx_temp_tasks_started_at ON temp_tasks(started_at);
+CREATE INDEX IF NOT EXISTS idx_temp_tasks_completed_at ON temp_tasks(completed_at);
+CREATE INDEX IF NOT EXISTS idx_temp_task_tags_tag_task ON temp_task_tags(tag, temp_task_id);
+CREATE INDEX IF NOT EXISTS idx_temp_task_events_task ON temp_task_events(temp_task_id);
+CREATE INDEX IF NOT EXISTS idx_temp_task_events_happened_at ON temp_task_events(happened_at);
+CREATE INDEX IF NOT EXISTS idx_temp_task_events_task_happened_at ON temp_task_events(temp_task_id, happened_at, created_at);
+CREATE INDEX IF NOT EXISTS idx_weekly_logs_week ON weekly_logs(week);
+CREATE INDEX IF NOT EXISTS idx_day_entries_date ON day_entries(date);
+CREATE INDEX IF NOT EXISTS idx_day_entries_date_created_at ON day_entries(date, created_at);
+CREATE INDEX IF NOT EXISTS idx_activity_events_happened_at ON activity_events(happened_at);
+CREATE INDEX IF NOT EXISTS idx_activity_events_ref ON activity_events(source, ref_id);
+CREATE INDEX IF NOT EXISTS idx_activity_events_ref_type ON activity_events(source, ref_id, event_type);`
+
 type eventTable struct {
 	name     string
 	parentID string
@@ -56,36 +113,42 @@ func New(database *sql.DB) *Store {
 	return &Store{db: database}
 }
 
+func (s *Store) EnsurePerformanceSchema(ctx context.Context) error {
+	if _, err := s.db.ExecContext(ctx, performanceSchema); err != nil {
+		return err
+	}
+	if err := s.backfillTagTables(ctx); err != nil {
+		return err
+	}
+	return s.backfillSearchIndexRefs(ctx)
+}
+
 func (s *Store) ensureActivityEventsTable(ctx context.Context) error {
 	_, err := s.db.ExecContext(ctx, activityEventsSchema)
 	return err
 }
 
 func (s *Store) ListIssues(ctx context.Context, filter service.IssueFilter) ([]service.Issue, error) {
-	query := `SELECT id, jira_key, title, status, priority, tags, summary_md, background_md, analysis_md, solution_md, actions_md, result_md, todo_md, links_json, started_at, completed_at, created_at, updated_at FROM issues`
+	query := `SELECT i.id, i.jira_key, i.title, i.status, i.priority, i.tags, i.summary_md, i.background_md, i.analysis_md, i.solution_md, i.actions_md, i.result_md, i.todo_md, i.links_json, i.started_at, i.completed_at, i.created_at, i.updated_at FROM issues i`
 	args := []any{}
 	where := []string{}
-	if filter.Query != "" {
-		like := "%" + filter.Query + "%"
-		where = append(where, `(jira_key LIKE ? OR title LIKE ? OR background_md LIKE ? OR analysis_md LIKE ? OR solution_md LIKE ? OR actions_md LIKE ? OR result_md LIKE ? OR todo_md LIKE ?)`)
-		args = append(args, like, like, like, like, like, like, like, like)
+	searchQuery := strings.TrimSpace(filter.Query)
+	if searchQuery != "" {
+		where = append(where, `i.jira_key IN (SELECT entity_id FROM search_index WHERE search_index MATCH ? AND entity_type = 'issue')`)
+		args = append(args, ftsQuery(searchQuery))
 	}
 	if filter.Status != "" {
-		where = append(where, "(status = ? OR background_md LIKE ?)")
+		where = append(where, "(i.status = ? OR i.background_md LIKE ?)")
 		args = append(args, filter.Status, "%Jira status: "+filter.Status+"%")
 	}
 	if filter.Tag != "" {
-		tagPattern, err := tagFilterPattern(filter.Tag)
-		if err != nil {
-			return nil, err
-		}
-		where = append(where, "tags LIKE ?")
-		args = append(args, tagPattern)
+		where = append(where, "i.id IN (SELECT issue_id FROM issue_tags WHERE tag = ?)")
+		args = append(args, filter.Tag)
 	}
 	if len(where) > 0 {
 		query += " WHERE " + strings.Join(where, " AND ")
 	}
-	query += " ORDER BY updated_at DESC"
+	query += " ORDER BY i.updated_at DESC"
 	if !filter.All {
 		query += " LIMIT ? OFFSET ?"
 		args = append(args, limitOrDefault(filter.Limit), max(filter.Offset, 0))
@@ -116,7 +179,7 @@ func (s *Store) CreateIssue(ctx context.Context, issue service.Issue) (service.I
 		return service.Issue{}, err
 	}
 	issue.ID, _ = result.LastInsertId()
-	return issue, nil
+	return issue, s.replaceIssueTags(ctx, issue.ID, issue.Tags)
 }
 
 func (s *Store) UpdateIssue(ctx context.Context, issue service.Issue) (service.Issue, error) {
@@ -129,7 +192,11 @@ func (s *Store) UpdateIssue(ctx context.Context, issue service.Issue) (service.I
 	if err != nil {
 		return service.Issue{}, err
 	}
-	return s.GetIssue(ctx, issue.JiraKey)
+	updated, err := s.GetIssue(ctx, issue.JiraKey)
+	if err != nil {
+		return service.Issue{}, err
+	}
+	return updated, s.replaceIssueTags(ctx, updated.ID, updated.Tags)
 }
 
 func (s *Store) DeleteIssue(ctx context.Context, jiraKey string) error {
@@ -150,13 +217,37 @@ func (s *Store) DeleteIssue(ctx context.Context, jiraKey string) error {
 		"issue", issue.ID, issue.JiraKey, issue.Title, "deleted", "删除 Issue", now, now, now); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM search_index WHERE entity_type = 'issue_event' AND entity_id IN (SELECT CAST(id AS TEXT) FROM issue_events WHERE issue_id = ?)`, issue.ID); err != nil {
+	if _, err := tx.ExecContext(ctx, `
+DELETE FROM search_index
+WHERE rowid IN (
+  SELECT r.search_rowid
+  FROM search_index_refs r
+  JOIN issue_events e ON CAST(e.id AS TEXT) = r.entity_id
+  WHERE r.entity_type = 'issue_event' AND e.issue_id = ?
+)`, issue.ID); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM search_index WHERE entity_type = 'issue_todo' AND entity_id LIKE ?`, issue.JiraKey+":%"); err != nil {
+	if _, err := tx.ExecContext(ctx, `
+DELETE FROM search_index_refs
+WHERE entity_type = 'issue_event'
+  AND entity_id IN (SELECT CAST(id AS TEXT) FROM issue_events WHERE issue_id = ?)`, issue.ID); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM search_index WHERE entity_type = 'issue' AND entity_id = ?`, issue.JiraKey); err != nil {
+	if _, err := tx.ExecContext(ctx, `
+DELETE FROM search_index
+WHERE rowid IN (
+  SELECT search_rowid FROM search_index_refs
+  WHERE entity_type = 'issue_todo' AND entity_id LIKE ?
+)`, issue.JiraKey+":%"); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM search_index_refs WHERE entity_type = 'issue_todo' AND entity_id LIKE ?`, issue.JiraKey+":%"); err != nil {
+		return err
+	}
+	if _, err := deleteSearchIndexTx(ctx, tx, "issue", issue.JiraKey); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM issue_tags WHERE issue_id = ?`, issue.ID); err != nil {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM issues WHERE jira_key = ?`, jiraKey); err != nil {
@@ -217,7 +308,17 @@ func (s *Store) ListOpenIssueTodos(ctx context.Context, limit int) ([]service.Is
 }
 
 func (s *Store) ListIssueTodosDueBetween(ctx context.Context, start string, end string) ([]service.IssueTodo, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT DISTINCT t.id, t.issue_id, i.jira_key, t.content, t.due_at, t.done, t.created_at, t.updated_at FROM issue_todos t JOIN issues i ON i.id = t.issue_id WHERE (t.due_at >= ? AND t.due_at < ?) OR (t.done = 1 AND t.updated_at >= ? AND t.updated_at < ?) ORDER BY t.done ASC, CASE WHEN t.due_at = '' THEN 1 ELSE 0 END, t.due_at ASC, t.updated_at DESC`, start, end, start, end)
+	rows, err := s.db.QueryContext(ctx, `
+WITH matched_todos AS (
+  SELECT id FROM issue_todos WHERE due_at >= ? AND due_at < ?
+  UNION
+  SELECT id FROM issue_todos WHERE done = 1 AND updated_at >= ? AND updated_at < ?
+)
+SELECT t.id, t.issue_id, i.jira_key, t.content, t.due_at, t.done, t.created_at, t.updated_at
+FROM issue_todos t
+JOIN matched_todos m ON m.id = t.id
+JOIN issues i ON i.id = t.issue_id
+ORDER BY t.done ASC, CASE WHEN t.due_at = '' THEN 1 ELSE 0 END, t.due_at ASC, t.updated_at DESC`, start, end, start, end)
 	if err != nil {
 		return nil, err
 	}
@@ -350,30 +451,26 @@ func (s *Store) DeleteTempTaskEvent(ctx context.Context, id int64) error {
 }
 
 func (s *Store) ListTempTasks(ctx context.Context, filter service.TempTaskFilter) ([]service.TempTask, error) {
-	query := `SELECT id, title, source, status, priority, tags, content_md, started_at, completed_at, converted_to_jira, converted_jira_key, created_at, updated_at FROM temp_tasks`
+	query := `SELECT t.id, t.title, t.source, t.status, t.priority, t.tags, t.content_md, t.started_at, t.completed_at, t.converted_to_jira, t.converted_jira_key, t.created_at, t.updated_at FROM temp_tasks t`
 	args := []any{}
 	where := []string{}
-	if filter.Query != "" {
-		like := "%" + filter.Query + "%"
-		where = append(where, `(title LIKE ? OR source LIKE ? OR content_md LIKE ?)`)
-		args = append(args, like, like, like)
+	searchQuery := strings.TrimSpace(filter.Query)
+	if searchQuery != "" {
+		where = append(where, `t.id IN (SELECT CAST(entity_id AS INTEGER) FROM search_index WHERE search_index MATCH ? AND entity_type = 'temp_task')`)
+		args = append(args, ftsQuery(searchQuery))
 	}
 	if filter.Status != "" {
-		where = append(where, "status = ?")
+		where = append(where, "t.status = ?")
 		args = append(args, filter.Status)
 	}
 	if filter.Tag != "" {
-		tagPattern, err := tagFilterPattern(filter.Tag)
-		if err != nil {
-			return nil, err
-		}
-		where = append(where, "tags LIKE ?")
-		args = append(args, tagPattern)
+		where = append(where, "t.id IN (SELECT temp_task_id FROM temp_task_tags WHERE tag = ?)")
+		args = append(args, filter.Tag)
 	}
 	if len(where) > 0 {
 		query += " WHERE " + strings.Join(where, " AND ")
 	}
-	query += " ORDER BY updated_at DESC"
+	query += " ORDER BY t.updated_at DESC"
 	if !filter.All {
 		query += " LIMIT ? OFFSET ?"
 		args = append(args, limitOrDefault(filter.Limit), max(filter.Offset, 0))
@@ -404,7 +501,7 @@ func (s *Store) CreateTempTask(ctx context.Context, task service.TempTask) (serv
 		return service.TempTask{}, err
 	}
 	task.ID, _ = result.LastInsertId()
-	return task, nil
+	return task, s.replaceTempTaskTags(ctx, task.ID, task.Tags)
 }
 
 func (s *Store) UpdateTempTask(ctx context.Context, task service.TempTask) (service.TempTask, error) {
@@ -417,7 +514,11 @@ func (s *Store) UpdateTempTask(ctx context.Context, task service.TempTask) (serv
 	if err != nil {
 		return service.TempTask{}, err
 	}
-	return s.GetTempTask(ctx, task.ID)
+	updated, err := s.GetTempTask(ctx, task.ID)
+	if err != nil {
+		return service.TempTask{}, err
+	}
+	return updated, s.replaceTempTaskTags(ctx, updated.ID, updated.Tags)
 }
 
 func (s *Store) DeleteTempTask(ctx context.Context, id int64) error {
@@ -438,10 +539,29 @@ func (s *Store) DeleteTempTask(ctx context.Context, id int64) error {
 		"temp_task", task.ID, "", task.Title, "deleted", "删除临时需求", now, now, now); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM temp_tasks WHERE id = ?`, id); err != nil {
+	if _, err := tx.ExecContext(ctx, `
+DELETE FROM search_index
+WHERE rowid IN (
+  SELECT r.search_rowid
+  FROM search_index_refs r
+  JOIN temp_task_events e ON CAST(e.id AS TEXT) = r.entity_id
+  WHERE r.entity_type = 'temp_task_event' AND e.temp_task_id = ?
+)`, id); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM search_index WHERE entity_type = 'temp_task' AND entity_id = ?`, fmt.Sprint(id)); err != nil {
+	if _, err := tx.ExecContext(ctx, `
+DELETE FROM search_index_refs
+WHERE entity_type = 'temp_task_event'
+  AND entity_id IN (SELECT CAST(id AS TEXT) FROM temp_task_events WHERE temp_task_id = ?)`, id); err != nil {
+		return err
+	}
+	if _, err := deleteSearchIndexTx(ctx, tx, "temp_task", fmt.Sprint(id)); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM temp_task_tags WHERE temp_task_id = ?`, id); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM temp_tasks WHERE id = ?`, id); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -485,32 +605,48 @@ func (s *Store) FirstActivityDate(ctx context.Context) (string, error) {
 	var first sql.NullString
 	err := s.db.QueryRowContext(ctx, `
 SELECT MIN(date_value) FROM (
-  SELECT substr(created_at, 1, 10) AS date_value FROM issues WHERE created_at <> ''
-  UNION ALL SELECT substr(updated_at, 1, 10) FROM issues WHERE updated_at <> ''
-  UNION ALL SELECT substr(started_at, 1, 10) FROM issues WHERE started_at <> ''
-  UNION ALL SELECT substr(completed_at, 1, 10) FROM issues WHERE completed_at <> ''
-  UNION ALL SELECT substr(happened_at, 1, 10) FROM issue_events WHERE happened_at <> ''
-  UNION ALL SELECT substr(due_at, 1, 10) FROM issue_todos WHERE due_at <> ''
-  UNION ALL SELECT substr(updated_at, 1, 10) FROM issue_todos WHERE done = 1 AND updated_at <> ''
-  UNION ALL SELECT substr(created_at, 1, 10) FROM temp_tasks WHERE created_at <> ''
-  UNION ALL SELECT substr(updated_at, 1, 10) FROM temp_tasks WHERE updated_at <> ''
-  UNION ALL SELECT substr(started_at, 1, 10) FROM temp_tasks WHERE started_at <> ''
-  UNION ALL SELECT substr(completed_at, 1, 10) FROM temp_tasks WHERE completed_at <> ''
-  UNION ALL SELECT substr(happened_at, 1, 10) FROM temp_task_events WHERE happened_at <> ''
-  UNION ALL SELECT substr(happened_at, 1, 10) FROM activity_events WHERE happened_at <> ''
+  SELECT MIN(created_at) AS date_value FROM issues WHERE created_at <> ''
+  UNION ALL SELECT MIN(updated_at) FROM issues WHERE updated_at <> ''
+  UNION ALL SELECT MIN(started_at) FROM issues WHERE started_at <> ''
+  UNION ALL SELECT MIN(completed_at) FROM issues WHERE completed_at <> ''
+  UNION ALL SELECT MIN(happened_at) FROM issue_events WHERE happened_at <> ''
+  UNION ALL SELECT MIN(due_at) FROM issue_todos WHERE due_at <> ''
+  UNION ALL SELECT MIN(updated_at) FROM issue_todos WHERE done = 1 AND updated_at <> ''
+  UNION ALL SELECT MIN(created_at) FROM temp_tasks WHERE created_at <> ''
+  UNION ALL SELECT MIN(updated_at) FROM temp_tasks WHERE updated_at <> ''
+  UNION ALL SELECT MIN(started_at) FROM temp_tasks WHERE started_at <> ''
+  UNION ALL SELECT MIN(completed_at) FROM temp_tasks WHERE completed_at <> ''
+  UNION ALL SELECT MIN(happened_at) FROM temp_task_events WHERE happened_at <> ''
+  UNION ALL SELECT MIN(happened_at) FROM activity_events WHERE happened_at <> ''
   UNION ALL SELECT date FROM day_entries WHERE date <> ''
-)`).Scan(&first)
+) WHERE date_value IS NOT NULL AND date_value <> ''`).Scan(&first)
 	if err != nil {
 		return "", err
 	}
 	if !first.Valid {
 		return "", nil
 	}
+	if len(first.String) >= 10 {
+		return first.String[:10], nil
+	}
 	return first.String, nil
 }
 
 func (s *Store) ListIssuesUpdatedBetween(ctx context.Context, start string, end string) ([]service.Issue, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT DISTINCT i.id, i.jira_key, i.title, i.status, i.priority, i.tags, i.summary_md, i.background_md, i.analysis_md, i.solution_md, i.actions_md, i.result_md, i.todo_md, i.links_json, i.started_at, i.completed_at, i.created_at, i.updated_at FROM issues i LEFT JOIN issue_events e ON e.issue_id = i.id WHERE (i.updated_at >= ? AND i.updated_at < ?) OR (e.happened_at >= ? AND e.happened_at < ?) OR (i.started_at >= ? AND i.started_at < ?) OR (i.completed_at >= ? AND i.completed_at < ?) ORDER BY i.updated_at DESC`, start, end, start, end, start, end, start, end)
+	rows, err := s.db.QueryContext(ctx, `
+WITH matched_issues AS (
+  SELECT id FROM issues WHERE updated_at >= ? AND updated_at < ?
+  UNION
+  SELECT issue_id FROM issue_events WHERE happened_at >= ? AND happened_at < ?
+  UNION
+  SELECT id FROM issues WHERE started_at >= ? AND started_at < ?
+  UNION
+  SELECT id FROM issues WHERE completed_at >= ? AND completed_at < ?
+)
+SELECT i.id, i.jira_key, i.title, i.status, i.priority, i.tags, i.summary_md, i.background_md, i.analysis_md, i.solution_md, i.actions_md, i.result_md, i.todo_md, i.links_json, i.started_at, i.completed_at, i.created_at, i.updated_at
+FROM issues i
+JOIN matched_issues m ON m.id = i.id
+ORDER BY i.updated_at DESC`, start, end, start, end, start, end, start, end)
 	if err != nil {
 		return nil, err
 	}
@@ -536,7 +672,20 @@ func (s *Store) ListEventsBetween(ctx context.Context, start string, end string)
 }
 
 func (s *Store) ListTempTasksUpdatedBetween(ctx context.Context, start string, end string) ([]service.TempTask, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id, title, source, status, priority, tags, content_md, started_at, completed_at, converted_to_jira, converted_jira_key, created_at, updated_at FROM temp_tasks WHERE (created_at >= ? AND created_at < ?) OR (updated_at >= ? AND updated_at < ?) OR (started_at >= ? AND started_at < ?) OR (completed_at >= ? AND completed_at < ?) ORDER BY updated_at DESC`, start, end, start, end, start, end, start, end)
+	rows, err := s.db.QueryContext(ctx, `
+WITH matched_tasks AS (
+  SELECT id FROM temp_tasks WHERE created_at >= ? AND created_at < ?
+  UNION
+  SELECT id FROM temp_tasks WHERE updated_at >= ? AND updated_at < ?
+  UNION
+  SELECT id FROM temp_tasks WHERE started_at >= ? AND started_at < ?
+  UNION
+  SELECT id FROM temp_tasks WHERE completed_at >= ? AND completed_at < ?
+)
+SELECT t.id, t.title, t.source, t.status, t.priority, t.tags, t.content_md, t.started_at, t.completed_at, t.converted_to_jira, t.converted_jira_key, t.created_at, t.updated_at
+FROM temp_tasks t
+JOIN matched_tasks m ON m.id = t.id
+ORDER BY t.updated_at DESC`, start, end, start, end, start, end, start, end)
 	if err != nil {
 		return nil, err
 	}
@@ -669,13 +818,44 @@ func (s *Store) UpsertSearchIndex(ctx context.Context, entityType string, entity
 	if err := s.DeleteSearchIndex(ctx, entityType, entityID); err != nil {
 		return err
 	}
-	_, err := s.db.ExecContext(ctx, `INSERT INTO search_index (entity_type, entity_id, title, body, updated_at) VALUES (?, ?, ?, ?, ?)`, entityType, entityID, title, body, updatedAt)
+	result, err := s.db.ExecContext(ctx, `INSERT INTO search_index (entity_type, entity_id, title, body, updated_at) VALUES (?, ?, ?, ?, ?)`, entityType, entityID, title, body, updatedAt)
+	if err != nil {
+		return err
+	}
+	rowID, err := result.LastInsertId()
+	if err != nil {
+		return err
+	}
+	_, err = s.db.ExecContext(ctx, `INSERT INTO search_index_refs (entity_type, entity_id, search_rowid) VALUES (?, ?, ?) ON CONFLICT(entity_type, entity_id) DO UPDATE SET search_rowid = excluded.search_rowid`, entityType, entityID, rowID)
 	return err
 }
 
 func (s *Store) DeleteSearchIndex(ctx context.Context, entityType string, entityID string) error {
-	_, err := s.db.ExecContext(ctx, `DELETE FROM search_index WHERE entity_type = ? AND entity_id = ?`, entityType, entityID)
-	return err
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := deleteSearchIndexTx(ctx, tx, entityType, entityID); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func deleteSearchIndexTx(ctx context.Context, tx *sql.Tx, entityType string, entityID string) (sql.Result, error) {
+	result, err := tx.ExecContext(ctx, `DELETE FROM search_index WHERE rowid IN (SELECT search_rowid FROM search_index_refs WHERE entity_type = ? AND entity_id = ?)`, entityType, entityID)
+	if err != nil {
+		return nil, err
+	}
+	if affected, err := result.RowsAffected(); err == nil && affected == 0 {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM search_index WHERE entity_type = ? AND entity_id = ?`, entityType, entityID); err != nil {
+			return nil, err
+		}
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM search_index_refs WHERE entity_type = ? AND entity_id = ?`, entityType, entityID); err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 
 func (s *Store) Search(ctx context.Context, query string, entityType string, limit int, offset int) ([]service.SearchResult, error) {
@@ -728,12 +908,288 @@ func encodeIssueJSON(issue service.Issue) (string, string, error) {
 	return string(tags), string(links), nil
 }
 
-func tagFilterPattern(tag string) (string, error) {
-	encoded, err := json.Marshal(tag)
+func (s *Store) replaceIssueTags(ctx context.Context, issueID int64, tags []string) error {
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return "", err
+		return err
 	}
-	return "%" + string(encoded) + "%", nil
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, `DELETE FROM issue_tags WHERE issue_id = ?`, issueID); err != nil {
+		return err
+	}
+	for _, tag := range cleanTags(tags) {
+		if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO issue_tags (issue_id, tag) VALUES (?, ?)`, issueID, tag); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+func (s *Store) replaceTempTaskTags(ctx context.Context, taskID int64, tags []string) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, `DELETE FROM temp_task_tags WHERE temp_task_id = ?`, taskID); err != nil {
+		return err
+	}
+	for _, tag := range cleanTags(tags) {
+		if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO temp_task_tags (temp_task_id, tag) VALUES (?, ?)`, taskID, tag); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+func cleanTags(tags []string) []string {
+	seen := map[string]bool{}
+	cleaned := []string{}
+	for _, tag := range tags {
+		tag = strings.TrimSpace(tag)
+		if tag == "" || seen[tag] {
+			continue
+		}
+		seen[tag] = true
+		cleaned = append(cleaned, tag)
+	}
+	return cleaned
+}
+
+func (s *Store) backfillTagTables(ctx context.Context) error {
+	tagVersion, err := s.metaValue(ctx, "tag_backfill_version")
+	if err != nil {
+		return err
+	}
+	if tagVersion == "1" {
+		return nil
+	}
+	if _, err := s.db.ExecContext(ctx, `DELETE FROM issue_tags; DELETE FROM temp_task_tags;`); err != nil {
+		return err
+	}
+	if err := s.backfillIssueTags(ctx); err != nil {
+		return err
+	}
+	if err := s.backfillTempTaskTags(ctx); err != nil {
+		return err
+	}
+	return s.setMetaValue(ctx, "tag_backfill_version", "1")
+}
+
+func (s *Store) backfillIssueTags(ctx context.Context) error {
+	rows, err := s.db.QueryContext(ctx, `SELECT id, tags FROM issues WHERE tags <> '' AND tags <> '[]'`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	type tagRecord struct {
+		id   int64
+		tags []string
+	}
+	records := []tagRecord{}
+	for rows.Next() {
+		var issueID int64
+		var tagsJSON string
+		if err := rows.Scan(&issueID, &tagsJSON); err != nil {
+			return err
+		}
+		var tags []string
+		if err := json.Unmarshal([]byte(tagsJSON), &tags); err != nil {
+			continue
+		}
+		records = append(records, tagRecord{id: issueID, tags: tags})
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	for _, record := range records {
+		if err := s.replaceIssueTags(ctx, record.id, record.tags); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Store) backfillTempTaskTags(ctx context.Context) error {
+	rows, err := s.db.QueryContext(ctx, `SELECT id, tags FROM temp_tasks WHERE tags <> '' AND tags <> '[]'`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	type tagRecord struct {
+		id   int64
+		tags []string
+	}
+	records := []tagRecord{}
+	for rows.Next() {
+		var taskID int64
+		var tagsJSON string
+		if err := rows.Scan(&taskID, &tagsJSON); err != nil {
+			return err
+		}
+		var tags []string
+		if err := json.Unmarshal([]byte(tagsJSON), &tags); err != nil {
+			continue
+		}
+		records = append(records, tagRecord{id: taskID, tags: tags})
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	for _, record := range records {
+		if err := s.replaceTempTaskTags(ctx, record.id, record.tags); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Store) backfillSearchIndexRefs(ctx context.Context) error {
+	if _, err := s.db.ExecContext(ctx, `
+INSERT OR IGNORE INTO search_index_refs (entity_type, entity_id, search_rowid)
+SELECT entity_type, entity_id, rowid FROM search_index`); err != nil {
+		return err
+	}
+	version, err := s.metaValue(ctx, "search_index_backfill_version")
+	if err != nil {
+		return err
+	}
+	if version == "1" {
+		return nil
+	}
+	if err := s.backfillIssueSearchIndex(ctx); err != nil {
+		return err
+	}
+	if err := s.backfillTempTaskSearchIndex(ctx); err != nil {
+		return err
+	}
+	if err := s.backfillWeeklyLogSearchIndex(ctx); err != nil {
+		return err
+	}
+	return s.setMetaValue(ctx, "search_index_backfill_version", "1")
+}
+
+func (s *Store) backfillIssueSearchIndex(ctx context.Context) error {
+	rows, err := s.db.QueryContext(ctx, `
+SELECT id, jira_key, title, status, priority, tags, summary_md, background_md, analysis_md, solution_md, actions_md, result_md, todo_md, links_json, started_at, completed_at, created_at, updated_at
+FROM issues
+WHERE jira_key NOT IN (SELECT entity_id FROM search_index_refs WHERE entity_type = 'issue')`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	issues := []service.Issue{}
+	for rows.Next() {
+		issue, err := scanIssue(rows)
+		if err != nil {
+			return err
+		}
+		issues = append(issues, issue)
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	for _, issue := range issues {
+		body := strings.Join([]string{issue.JiraKey, issue.SummaryMD, issue.BackgroundMD, issue.AnalysisMD, issue.SolutionMD, issue.ActionsMD, issue.ResultMD, issue.TodoMD, issue.StartedAt, issue.CompletedAt}, "\n")
+		if err := s.UpsertSearchIndex(ctx, "issue", issue.JiraKey, issue.JiraKey+" "+issue.Title, body, issue.UpdatedAt); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Store) backfillTempTaskSearchIndex(ctx context.Context) error {
+	rows, err := s.db.QueryContext(ctx, `
+SELECT id, title, source, status, priority, tags, content_md, started_at, completed_at, converted_to_jira, converted_jira_key, created_at, updated_at
+FROM temp_tasks
+WHERE CAST(id AS TEXT) NOT IN (SELECT entity_id FROM search_index_refs WHERE entity_type = 'temp_task')`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	tasks := []service.TempTask{}
+	for rows.Next() {
+		task, err := scanTempTask(rows)
+		if err != nil {
+			return err
+		}
+		tasks = append(tasks, task)
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	for _, task := range tasks {
+		body := strings.Join([]string{task.Source, task.ContentMD, task.StartedAt, task.CompletedAt, task.ConvertedJiraKey}, "\n")
+		if err := s.UpsertSearchIndex(ctx, "temp_task", fmt.Sprint(task.ID), task.Title, body, task.UpdatedAt); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Store) backfillWeeklyLogSearchIndex(ctx context.Context) error {
+	rows, err := s.db.QueryContext(ctx, `
+SELECT id, week, summary_md, next_plan_md, created_at, updated_at
+FROM weekly_logs
+WHERE week NOT IN (SELECT entity_id FROM search_index_refs WHERE entity_type = 'weekly_log')`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	logs := []service.WeeklyLog{}
+	for rows.Next() {
+		log, err := scanWeeklyLogRow(rows)
+		if err != nil {
+			return err
+		}
+		logs = append(logs, log)
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	for _, log := range logs {
+		if err := s.UpsertSearchIndex(ctx, "weekly_log", log.Week, "Weekly Log "+log.Week, log.SummaryMD+"\n"+log.NextPlanMD, log.UpdatedAt); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Store) metaValue(ctx context.Context, key string) (string, error) {
+	var value string
+	err := s.db.QueryRowContext(ctx, `SELECT value FROM app_schema_meta WHERE key = ?`, key).Scan(&value)
+	if err == sql.ErrNoRows {
+		return "", nil
+	}
+	return value, err
+}
+
+func (s *Store) setMetaValue(ctx context.Context, key string, value string) error {
+	_, err := s.db.ExecContext(ctx, `INSERT INTO app_schema_meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`, key, value)
+	return err
+}
+
+func ftsQuery(query string) string {
+	parts := strings.Fields(strings.TrimSpace(query))
+	for index, part := range parts {
+		parts[index] = `"` + strings.ReplaceAll(part, `"`, `""`) + `"`
+	}
+	return strings.Join(parts, " ")
 }
 
 type scanner interface {

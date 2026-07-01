@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"database/sql"
 	"os"
 	"path/filepath"
@@ -19,6 +20,9 @@ type Runtime struct {
 
 func NewRuntime(cfg config.Config, database *sql.DB) (*Runtime, error) {
 	repo := store.New(database)
+	if err := repo.EnsurePerformanceSchema(context.Background()); err != nil {
+		return nil, err
+	}
 	jiraClient := jira.New(jira.Config{BaseURL: cfg.JiraBaseURL, Email: cfg.JiraEmail, APIToken: cfg.JiraAPIToken})
 	settingsStore := appsettings.New(filepath.Join(cfg.DataDir, "tracelog-settings.json"), appsettings.Settings{
 		Jira: appsettings.JiraSettings{

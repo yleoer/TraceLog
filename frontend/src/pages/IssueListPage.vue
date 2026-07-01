@@ -39,6 +39,14 @@
     <div class="bg-white border border-gray-200 rounded-lg overflow-hidden">
       <n-data-table :loading="loading" :columns="columns" :data="issues" :row-key="issueRowKey" size="small" :bordered="false" />
     </div>
+
+    <div class="flex items-center justify-between text-sm text-gray-500">
+      <span>第 {{ page }} 页，当前 {{ issues.length }} 条</span>
+      <div class="flex items-center gap-2">
+        <n-button size="small" :disabled="page <= 1 || loading" @click="goPage(page - 1)">上一页</n-button>
+        <n-button size="small" :disabled="!hasNextPage || loading" @click="goPage(page + 1)">下一页</n-button>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -67,6 +75,9 @@ const tag = ref('')
 const activeTag = computed(() => tag.value.trim())
 const hasFilters = computed(() => Boolean(query.value.trim() || status.value.trim() || tag.value.trim()))
 const allIssues = ref<Issue[]>([])
+const page = ref(1)
+const pageSize = 50
+const hasNextPage = ref(false)
 
 const statusOptions = computed(() => {
   const seen = new Set<string>()
@@ -172,16 +183,17 @@ async function load() {
     const filters = {
       q: query.value.trim() || undefined,
       status: status.value.trim() || undefined,
-      tag: tag.value.trim() || undefined
+      tag: tag.value.trim() || undefined,
+      limit: pageSize + 1,
+      offset: (page.value - 1) * pageSize
     }
     const hasActiveFilter = Boolean(filters.q || filters.status || filters.tag)
-    issues.value = await api.listIssues(filters)
+    const rows = await api.listIssues(filters)
+    hasNextPage.value = rows.length > pageSize
+    issues.value = rows.slice(0, pageSize)
     if (!hasActiveFilter) {
-      // The unfiltered list is already the full set — reuse it as the facet source
-      // instead of firing a second identical list request.
-      allIssues.value = issues.value
+      await loadFacets()
     } else if (allIssues.value.length === 0) {
-      // Landed directly on a filtered view: fetch the full set once for dropdown options.
       await loadFacets()
     }
   } catch (error) {
@@ -196,7 +208,7 @@ function issueRowKey(row: Issue) {
 }
 
 function applyFilters() {
-  router.push({ path: '/issues', query: filterQuery() })
+  router.push({ path: '/issues', query: filterQuery(1) })
 }
 
 function onStatusChange(value: unknown) {
@@ -211,7 +223,7 @@ function onTagChange(value: unknown) {
 
 async function loadFacets() {
   try {
-    allIssues.value = await api.listIssues({})
+    allIssues.value = await api.listIssues({ limit: 200 })
   } catch {
     // Facet options are best-effort; ignore failures.
   }
@@ -230,11 +242,16 @@ function showIssuesByTag(value: string) {
   router.push({ path: '/issues', query: { tag: value } })
 }
 
-function filterQuery() {
+function goPage(nextPage: number) {
+  router.push({ path: '/issues', query: filterQuery(Math.max(1, nextPage)) })
+}
+
+function filterQuery(nextPage = page.value) {
   return {
     ...(query.value.trim() ? { q: query.value.trim() } : {}),
     ...(status.value.trim() ? { status: status.value.trim() } : {}),
-    ...(tag.value.trim() ? { tag: tag.value.trim() } : {})
+    ...(tag.value.trim() ? { tag: tag.value.trim() } : {}),
+    ...(nextPage > 1 ? { page: String(nextPage) } : {})
   }
 }
 
@@ -242,10 +259,17 @@ function syncFiltersFromRoute() {
   query.value = stringParam(route.query.q)
   status.value = stringParam(route.query.status)
   tag.value = stringParam(route.query.tag)
+  page.value = positiveInt(route.query.page)
 }
 
 function stringParam(value: unknown) {
   return typeof value === 'string' ? value : ''
+}
+
+function positiveInt(value: unknown) {
+  if (typeof value !== 'string') return 1
+  const parsed = Number(value)
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : 1
 }
 
 function firstJiraLink(row: Issue) {

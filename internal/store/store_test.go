@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"strconv"
 	"testing"
 
@@ -23,6 +24,24 @@ func TestListIssuesFiltersByExactJSONTag(t *testing.T) {
 
 	if len(issues) != 1 || issues[0].JiraKey != "GCS-2" {
 		t.Fatalf("expected only GCS-2 for exact tag front, got %#v", issues)
+	}
+}
+
+func TestListIssuesSearchUsesFTSIndex(t *testing.T) {
+	store := newTestStore(t)
+	issueID := insertTestIssue(t, store.db, "GCS-1", "In Progress", `["frontend"]`, "contains indexed keyword")
+	if err := store.UpsertSearchIndex(context.Background(), "issue", "GCS-1", "GCS-1 Test issue", "contains indexed keyword", "2026-06-23T00:00:00Z"); err != nil {
+		t.Fatal(err)
+	}
+	insertTestIssue(t, store.db, "GCS-2", "In Progress", `["frontend"]`, "contains indexed keyword")
+
+	issues, err := store.ListIssues(context.Background(), service.IssueFilter{Query: "indexed"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(issues) != 1 || issues[0].ID != issueID {
+		t.Fatalf("expected only FTS-indexed issue, got %#v", issues)
 	}
 }
 
@@ -107,6 +126,42 @@ func TestSearchResultURLsPointToDetailPages(t *testing.T) {
 		if urls[key] != item.expected {
 			t.Fatalf("expected %s to route to %s, got %q from %#v", key, item.expected, urls[key], results)
 		}
+	}
+}
+
+func TestEnsurePerformanceSchemaBackfillsTagsSearchAndRefs(t *testing.T) {
+	store := newTestStore(t)
+	insertTestIssue(t, store.db, "GCS-1", "In Progress", `["frontend"]`, "legacy searchable issue")
+	insertTestTempTaskWithTags(t, store.db, `["ops"]`, "legacy searchable task")
+	if _, err := store.db.Exec(`DELETE FROM issue_tags; DELETE FROM temp_task_tags; DELETE FROM search_index; DELETE FROM search_index_refs; DELETE FROM app_schema_meta;`); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := store.EnsurePerformanceSchema(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	issues, err := store.ListIssues(context.Background(), service.IssueFilter{Tag: "frontend", Query: "legacy"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(issues) != 1 || issues[0].JiraKey != "GCS-1" {
+		t.Fatalf("expected backfilled issue tag and search index, got %#v", issues)
+	}
+	tasks, err := store.ListTempTasks(context.Background(), service.TempTaskFilter{Tag: "ops", Query: "task"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tasks) != 1 || tasks[0].Title != "legacy searchable task" {
+		t.Fatalf("expected backfilled task tag and search index, got %#v", tasks)
+	}
+
+	var refs int
+	if err := store.db.QueryRow(`SELECT COUNT(*) FROM search_index_refs`).Scan(&refs); err != nil {
+		t.Fatal(err)
+	}
+	if refs == 0 {
+		t.Fatal("expected search index refs to be backfilled")
 	}
 }
 
@@ -255,6 +310,12 @@ CREATE TABLE issue_todos (
   updated_at TEXT NOT NULL,
   FOREIGN KEY (issue_id) REFERENCES issues(id) ON DELETE CASCADE
 );
+CREATE TABLE issue_tags (
+  issue_id INTEGER NOT NULL,
+  tag TEXT NOT NULL,
+  PRIMARY KEY (issue_id, tag),
+  FOREIGN KEY (issue_id) REFERENCES issues(id) ON DELETE CASCADE
+);
 CREATE TABLE temp_tasks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   title TEXT NOT NULL,
@@ -269,6 +330,12 @@ CREATE TABLE temp_tasks (
   converted_jira_key TEXT NOT NULL DEFAULT '',
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
+);
+CREATE TABLE temp_task_tags (
+  temp_task_id INTEGER NOT NULL,
+  tag TEXT NOT NULL,
+  PRIMARY KEY (temp_task_id, tag),
+  FOREIGN KEY (temp_task_id) REFERENCES temp_tasks(id) ON DELETE CASCADE
 );
 CREATE TABLE temp_task_events (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -313,6 +380,9 @@ CREATE TABLE activity_events (
 	if _, err := db.Exec(`CREATE VIRTUAL TABLE search_index USING fts5(entity_type UNINDEXED, entity_id UNINDEXED, title, body, updated_at UNINDEXED, tokenize = 'unicode61')`); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := db.Exec(`CREATE TABLE search_index_refs (entity_type TEXT NOT NULL, entity_id TEXT NOT NULL, search_rowid INTEGER NOT NULL UNIQUE, PRIMARY KEY (entity_type, entity_id)); CREATE TABLE app_schema_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);`); err != nil {
+		t.Fatal(err)
+	}
 	return New(db)
 }
 
@@ -335,6 +405,14 @@ func insertTestIssue(t *testing.T, db *sql.DB, jiraKey string, status string, ta
 	id, err := result.LastInsertId()
 	if err != nil {
 		t.Fatal(err)
+	}
+	var parsedTags []string
+	if err := json.Unmarshal([]byte(tags), &parsedTags); err == nil {
+		for _, tag := range parsedTags {
+			if _, err := db.Exec(`INSERT OR IGNORE INTO issue_tags (issue_id, tag) VALUES (?, ?)`, id, tag); err != nil {
+				t.Fatal(err)
+			}
+		}
 	}
 	return id
 }
@@ -382,12 +460,17 @@ func insertTestIssueTodo(t *testing.T, db *sql.DB, issueID int64) int64 {
 }
 
 func insertTestTempTask(t *testing.T, db *sql.DB) int64 {
+	return insertTestTempTaskWithTags(t, db, `[]`, "Temp task")
+}
+
+func insertTestTempTaskWithTags(t *testing.T, db *sql.DB, tags string, title string) int64 {
 	t.Helper()
 	result, err := db.Exec(
-		`INSERT INTO temp_tasks (title, status, priority, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
-		"Temp task",
+		`INSERT INTO temp_tasks (title, status, priority, tags, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`,
+		title,
 		"todo",
 		"medium",
+		tags,
 		"2026-06-23T00:00:00Z",
 		"2026-06-23T00:00:00Z",
 	)
@@ -397,6 +480,14 @@ func insertTestTempTask(t *testing.T, db *sql.DB) int64 {
 	id, err := result.LastInsertId()
 	if err != nil {
 		t.Fatal(err)
+	}
+	var parsedTags []string
+	if err := json.Unmarshal([]byte(tags), &parsedTags); err == nil {
+		for _, tag := range parsedTags {
+			if _, err := db.Exec(`INSERT OR IGNORE INTO temp_task_tags (temp_task_id, tag) VALUES (?, ?)`, id, tag); err != nil {
+				t.Fatal(err)
+			}
+		}
 	}
 	return id
 }

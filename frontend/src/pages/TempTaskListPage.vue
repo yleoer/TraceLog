@@ -6,22 +6,30 @@
     </div>
 
     <div class="flex flex-wrap items-center gap-2">
-      <n-input v-model:value="query" placeholder="搜索标题、来源、内容" clearable size="small" class="!w-56" @keyup.enter="load" />
-      <n-select v-model:value="status" placeholder="状态" clearable size="small" :options="statusOptions" class="!w-32" />
-      <n-button size="small" @click="load">搜索</n-button>
+      <n-input v-model:value="query" placeholder="搜索标题、来源、内容" clearable size="small" class="!w-56" @keyup.enter="applyFilters" />
+      <n-select :value="status" placeholder="状态" clearable size="small" :options="statusOptions" class="!w-32" @update:value="onStatusChange" />
+      <n-button size="small" @click="applyFilters">搜索</n-button>
     </div>
 
     <div class="bg-white border border-gray-200 rounded-lg overflow-hidden">
       <n-data-table :loading="loading" :columns="columns" :data="tasks" :row-key="taskRowKey" size="small" :bordered="false" />
     </div>
+
+    <div class="flex items-center justify-between text-sm text-gray-500">
+      <span>第 {{ page }} 页，当前 {{ tasks.length }} 条</span>
+      <div class="flex items-center gap-2">
+        <n-button size="small" :disabled="page <= 1 || loading" @click="goPage(page - 1)">上一页</n-button>
+        <n-button size="small" :disabled="!hasNextPage || loading" @click="goPage(page + 1)">下一页</n-button>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { h, onMounted, ref, watch } from 'vue'
+import { h, ref, watch } from 'vue'
 import { NButton, NDataTable, NInput, NSelect, useMessage } from 'naive-ui'
 import type { DataTableColumns } from 'naive-ui'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { api } from '../api/client'
 import StatusTag from '../components/StatusTag.vue'
 import PriorityTag from '../components/PriorityTag.vue'
@@ -30,11 +38,15 @@ import { formatDateTime } from '../utils/datetime'
 import type { TempTask } from '../types'
 
 const router = useRouter()
+const route = useRoute()
 const message = useMessage()
 const loading = ref(false)
 const tasks = ref<TempTask[]>([])
 const query = ref('')
 const status = ref<string | null>(null)
+const page = ref(1)
+const pageSize = 50
+const hasNextPage = ref(false)
 
 const statusOptions = [
   { label: '待处理', value: 'todo' },
@@ -74,7 +86,14 @@ const columns: DataTableColumns<TempTask> = [
 async function load() {
   loading.value = true
   try {
-    tasks.value = await api.listTempTasks({ q: query.value, status: status.value ?? undefined })
+    const rows = await api.listTempTasks({
+      q: query.value.trim() || undefined,
+      status: status.value ?? undefined,
+      limit: pageSize + 1,
+      offset: (page.value - 1) * pageSize
+    })
+    hasNextPage.value = rows.length > pageSize
+    tasks.value = rows.slice(0, pageSize)
   } catch (error) {
     message.error((error as Error).message)
   } finally {
@@ -90,8 +109,51 @@ function formatDate(value: string) {
   return formatDateTime(value)
 }
 
-watch(status, load)
-onMounted(load)
+function applyFilters() {
+  router.push({ path: '/temp-tasks', query: filterQuery(1) })
+}
+
+function onStatusChange(value: unknown) {
+  status.value = typeof value === 'string' ? value : null
+  applyFilters()
+}
+
+function goPage(nextPage: number) {
+  router.push({ path: '/temp-tasks', query: filterQuery(Math.max(1, nextPage)) })
+}
+
+function filterQuery(nextPage = page.value) {
+  return {
+    ...(query.value.trim() ? { q: query.value.trim() } : {}),
+    ...(status.value ? { status: status.value } : {}),
+    ...(nextPage > 1 ? { page: String(nextPage) } : {})
+  }
+}
+
+function syncFiltersFromRoute() {
+  query.value = stringParam(route.query.q)
+  status.value = stringParam(route.query.status) || null
+  page.value = positiveInt(route.query.page)
+}
+
+function stringParam(value: unknown) {
+  return typeof value === 'string' ? value : ''
+}
+
+function positiveInt(value: unknown) {
+  if (typeof value !== 'string') return 1
+  const parsed = Number(value)
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : 1
+}
+
+watch(
+  () => route.query,
+  () => {
+    syncFiltersFromRoute()
+    load()
+  },
+  { immediate: true }
+)
 </script>
 
 <style scoped>
