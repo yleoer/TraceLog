@@ -47,17 +47,12 @@
           </ul>
         </div>
       </div>
-
-      <div class="card mt-4">
-        <h2 class="card-title">周报草稿片段</h2>
-        <MarkdownEditor v-model="draft" :upload-context="`today-${data?.date || 'draft'}-weekly-draft`" placeholder="编辑今日生成的周报草稿片段..." />
-      </div>
     </n-spin>
   </div>
 </template>
 
 <script setup lang="ts">
-import { defineAsyncComponent, onMounted, ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { NButton, NSpin, useMessage } from 'naive-ui'
 import { api } from '../api/client'
 import StatusTag from '../components/StatusTag.vue'
@@ -65,17 +60,14 @@ import DayWorkPanel from '../components/DayWorkPanel.vue'
 import { tempStatusLabel } from '../utils/tempTaskDisplay'
 import type { TodayWorkflow } from '../types'
 
-const MarkdownEditor = defineAsyncComponent(() => import('../components/MarkdownEditor.vue'))
 const message = useMessage()
 const loading = ref(false)
 const data = ref<TodayWorkflow>()
-const draft = ref('')
 
 async function load() {
   loading.value = true
   try {
     data.value = await api.today()
-    draft.value = data.value.weekly_draft
   } catch (error) {
     message.error((error as Error).message)
   } finally {

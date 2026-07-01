@@ -139,9 +139,31 @@
           <div v-for="todo in todos" :key="todo.id" class="todo-item" :class="{ done: todo.done }">
             <n-checkbox :checked="todo.done" @update:checked="toggleTodo(todo, $event)" />
             <div class="flex-1 min-w-0">
-              <div class="text-sm">{{ todo.content }}</div>
-              <span v-if="todo.due_at" class="text-xs text-gray-400">截止 {{ formatDateTime(todo.due_at) }}</span>
+              <div class="todo-content text-sm">{{ todo.content }}</div>
             </div>
+            <n-date-picker
+              v-if="editingTodoDueId === todo.id"
+              :value="todoDueValue(todo)"
+              :show="editingTodoDueId === todo.id"
+              type="datetime"
+              clearable
+              size="small"
+              class="todo-due-picker"
+              placeholder="截止时间"
+              :disabled="todoDueSavingId === todo.id"
+              @update:show="onTodoDuePickerShow(todo, $event)"
+              @update:value="updateTodoDueAt(todo, $event)"
+            />
+            <button
+              v-else
+              type="button"
+              class="todo-due-display"
+              :disabled="todoDueSavingId === todo.id"
+              title="双击修改截止时间"
+              @dblclick="startTodoDueEdit(todo)"
+            >
+              {{ todoDueLabel(todo) }}
+            </button>
             <n-button text size="tiny" type="error" @click="deleteTodo(todo)">删除</n-button>
           </div>
         </div>
@@ -251,6 +273,8 @@ const todoDraft = reactive({
   dueAt: null as number | null
 })
 const todoSaving = ref(false)
+const todoDueSavingId = ref<number | null>(null)
+const editingTodoDueId = ref<number | null>(null)
 const openTodos = computed(() => todos.value.filter((todo) => !todo.done))
 const commentDraftKey = computed(() => form.jira_key ? `tracelog:draft:issue-comment:${form.jira_key}` : '')
 
@@ -445,6 +469,30 @@ async function toggleTodo(todo: IssueTodo, checked: boolean) {
   }
 }
 
+async function updateTodoDueAt(todo: IssueTodo, value: number | null) {
+  if (todoDueValue(todo) === value) return
+  todoDueSavingId.value = todo.id
+  try {
+    await api.updateIssueTodo(todo.id, { ...todo, due_at: value ? new Date(value).toISOString() : '' })
+    await loadTodos()
+    editingTodoDueId.value = null
+  } catch (error) {
+    message.error((error as Error).message)
+  } finally {
+    todoDueSavingId.value = null
+  }
+}
+
+function startTodoDueEdit(todo: IssueTodo) {
+  editingTodoDueId.value = todo.id
+}
+
+function onTodoDuePickerShow(todo: IssueTodo, show: boolean) {
+  if (!show && todoDueSavingId.value !== todo.id) {
+    editingTodoDueId.value = null
+  }
+}
+
 async function deleteTodo(todo: IssueTodo) {
   try {
     await api.deleteIssueTodo(todo.id)
@@ -484,6 +532,14 @@ function parseMillis(value: string) {
   if (!value) return null
   const timestamp = Date.parse(value)
   return Number.isNaN(timestamp) ? null : timestamp
+}
+
+function todoDueValue(todo: IssueTodo) {
+  return parseMillis(todo.due_at)
+}
+
+function todoDueLabel(todo: IssueTodo) {
+  return todo.due_at ? `截止 ${formatDateTime(todo.due_at)}` : '未设置截止时间'
 }
 
 function formatDateTime(value: string) {
@@ -533,7 +589,53 @@ onBeforeUnmount(() => {
 
 .todo-item.done {
   opacity: 0.6;
+}
+
+.todo-item.done .todo-content {
   text-decoration: line-through;
+  color: #9ca3af;
+}
+
+.todo-due-picker {
+  flex-shrink: 0;
+  width: 190px;
+}
+
+.todo-due-display {
+  flex-shrink: 0;
+  width: 190px;
+  min-height: 28px;
+  text-align: left;
+  color: #6b7280;
+  font-size: 12px;
+  line-height: 1.4;
+  padding: 4px 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  transition: all 0.15s ease;
+}
+
+.todo-due-display:hover:not(:disabled) {
+  background: #f3f4f6;
+  border-color: #e5e7eb;
+  color: #374151;
+}
+
+.todo-due-display:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+@media (max-width: 640px) {
+  .todo-item {
+    flex-wrap: wrap;
+  }
+
+  .todo-due-picker,
+  .todo-due-display {
+    margin-left: 26px;
+    width: calc(100% - 26px);
+  }
 }
 
 </style>
