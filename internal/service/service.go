@@ -16,6 +16,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -52,6 +53,7 @@ type Repository interface {
 	ListIssueTodos(context.Context, int64, bool) ([]IssueTodo, error)
 	ListOpenIssueTodos(context.Context, int) ([]IssueTodo, error)
 	ListIssueTodosDueBetween(context.Context, string, string) ([]IssueTodo, error)
+	ListCompletedIssueTodoCommentsBetween(context.Context, string, string) ([]DayComment, error)
 	CreateIssueTodo(context.Context, IssueTodo) (IssueTodo, error)
 	UpdateIssueTodo(context.Context, IssueTodo) (IssueTodo, error)
 	GetIssueTodo(context.Context, int64) (IssueTodo, error)
@@ -138,7 +140,7 @@ func (s *Service) CreateIssue(ctx context.Context, issue Issue) (Issue, error) {
 	if err != nil {
 		return Issue{}, err
 	}
-	if err := s.recordIssueActivity(ctx, created, "created", "添加 Issue"); err != nil {
+	if err := s.recordIssueActivity(ctx, created, "created", ""); err != nil {
 		return Issue{}, err
 	}
 	return created, s.indexIssue(ctx, created)
@@ -391,7 +393,7 @@ func (s *Service) CreateTempTask(ctx context.Context, task TempTask) (TempTask, 
 	if err != nil {
 		return TempTask{}, err
 	}
-	if err := s.recordTempTaskActivity(ctx, created, "created", "添加临时需求"); err != nil {
+	if err := s.recordTempTaskActivity(ctx, created, "created", ""); err != nil {
 		return TempTask{}, err
 	}
 	return created, s.indexTempTask(ctx, created)
@@ -1582,11 +1584,15 @@ func (s *Service) buildDays(ctx context.Context, startStr string, endStr string,
 	if err != nil {
 		return nil, err
 	}
+	todoComments, err := s.repo.ListCompletedIssueTodoCommentsBetween(ctx, startStr, endStr)
+	if err != nil {
+		return nil, err
+	}
 	dayEntries, err := s.repo.ListDayEntriesBetween(ctx, days[0].Format("2006-01-02"), days[len(days)-1].Format("2006-01-02"))
 	if err != nil {
 		return nil, err
 	}
-	comments := append(append(issueComments, tempComments...), activityEvents...)
+	comments := append(append(append(issueComments, tempComments...), activityEvents...), todoComments...)
 	return bucketByDay(s.loc, days, comments, dayEntries), nil
 }
 
@@ -1605,6 +1611,9 @@ func bucketByDay(loc *time.Location, days []time.Time, comments []DayComment, en
 		}
 	}
 	for i := range result {
+		sort.SliceStable(result[i].Comments, func(left, right int) bool {
+			return result[i].Comments[left].HappenedAt < result[i].Comments[right].HappenedAt
+		})
 		result[i].Activities = groupDayActivities(result[i].Comments)
 	}
 	for _, e := range entries {

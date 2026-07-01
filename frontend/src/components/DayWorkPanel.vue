@@ -108,8 +108,10 @@ function activityLabel(activity: DayActivity) {
 }
 
 function eventTypeLabel(type: string) {
-  if (type === 'created') return '添加'
+  if (type === 'created') return '创建'
   if (type === 'deleted') return '删除'
+  if (type === 'note') return '评论'
+  if (type === 'todo_done') return '完成 TODO'
   return type || '事件'
 }
 
@@ -236,6 +238,11 @@ type MarkdownEditorExpose = {
 .event-chip.deleted {
   background: #fef2f2;
   color: #dc2626;
+}
+
+.event-chip.todo_done {
+  background: #eff6ff;
+  color: #2563eb;
 }
 
 .entry-editor {

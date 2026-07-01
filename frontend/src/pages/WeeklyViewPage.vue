@@ -51,7 +51,7 @@
           <div v-for="event in view?.events ?? []" :key="event.id" class="py-2 border-b border-gray-50 last:border-0">
             <div class="flex items-center gap-2 mb-1">
               <span class="text-xs text-gray-400">{{ formatDate(event.happened_at) }}</span>
-              <span class="text-xs text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">{{ event.event_type }}</span>
+              <span class="text-xs text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">{{ eventTypeLabel(event.event_type) }}</span>
             </div>
             <MarkdownView :content="event.content_md" />
           </div>
@@ -151,7 +151,7 @@ const summaryEditorVisible = ref(false)
 const nextPlanEditorVisible = ref(false)
 const summaryEditor = ref<MarkdownEditorExpose | null>(null)
 const nextPlanEditor = ref<MarkdownEditorExpose | null>(null)
-const visibleDays = computed(() => (view.value?.days ?? []).filter((day) => day.date <= todayDate()))
+const visibleDays = computed(() => [...(view.value?.days ?? []).filter((day) => day.date <= todayDate())].reverse())
 const firstWeek = computed(() => weekBounds.value?.first_week || currentWeek())
 const lastWeek = computed(() => weekBounds.value?.current_week || currentWeek())
 const canGoPrevious = computed(() => compareWeeks(normalizeWeek(week.value), firstWeek.value) > 0)
@@ -328,6 +328,11 @@ function isoWeekToDate(year: number, weekNumber: number) {
 
 function formatDate(value: string) {
   return formatDateTime(value)
+}
+
+function eventTypeLabel(type: string) {
+  if (type === 'note') return '评论'
+  return type || '事件'
 }
 
 function todayDate() {

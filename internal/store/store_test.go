@@ -175,6 +175,35 @@ func TestListActivityEventsBetweenReturnsDeletedRefs(t *testing.T) {
 	}
 }
 
+func TestListCompletedIssueTodoCommentsBetweenReturnsDoneTodos(t *testing.T) {
+	store := newTestStore(t)
+	issueID := insertTestIssue(t, store.db, "GCS-1", "In Progress", `[]`, "")
+	doneTodoID := insertTestIssueTodo(t, store.db, issueID)
+	openTodoID := insertTestIssueTodo(t, store.db, issueID)
+	if _, err := store.db.Exec(`UPDATE issue_todos SET done = 1, content = ?, updated_at = ? WHERE id = ?`, "finish report", "2026-06-24T10:00:00Z", doneTodoID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.db.Exec(`UPDATE issue_todos SET done = 0, content = ?, updated_at = ? WHERE id = ?`, "open followup", "2026-06-24T11:00:00Z", openTodoID); err != nil {
+		t.Fatal(err)
+	}
+
+	comments, err := store.ListCompletedIssueTodoCommentsBetween(context.Background(), "2026-06-24T00:00:00Z", "2026-06-25T00:00:00Z")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(comments) != 1 {
+		t.Fatalf("expected one completed todo comment, got %#v", comments)
+	}
+	comment := comments[0]
+	if comment.EventID != doneTodoID || comment.EventType != "todo_done" || comment.ContentMD != "完成 TODO：finish report" {
+		t.Fatalf("unexpected completed todo comment: %#v", comment)
+	}
+	if comment.Source != "issue" || comment.RefKey != "GCS-1" || comment.RefID != issueID {
+		t.Fatalf("expected todo comment to reference issue, got %#v", comment)
+	}
+}
+
 func newTestStore(t *testing.T) *Store {
 	t.Helper()
 	db, err := sql.Open("sqlite", ":memory:")

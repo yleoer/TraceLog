@@ -217,12 +217,34 @@ func (s *Store) ListOpenIssueTodos(ctx context.Context, limit int) ([]service.Is
 }
 
 func (s *Store) ListIssueTodosDueBetween(ctx context.Context, start string, end string) ([]service.IssueTodo, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT t.id, t.issue_id, i.jira_key, t.content, t.due_at, t.done, t.created_at, t.updated_at FROM issue_todos t JOIN issues i ON i.id = t.issue_id WHERE t.due_at >= ? AND t.due_at < ? ORDER BY t.done ASC, t.due_at ASC`, start, end)
+	rows, err := s.db.QueryContext(ctx, `SELECT DISTINCT t.id, t.issue_id, i.jira_key, t.content, t.due_at, t.done, t.created_at, t.updated_at FROM issue_todos t JOIN issues i ON i.id = t.issue_id WHERE (t.due_at >= ? AND t.due_at < ?) OR (t.done = 1 AND t.updated_at >= ? AND t.updated_at < ?) ORDER BY t.done ASC, CASE WHEN t.due_at = '' THEN 1 ELSE 0 END, t.due_at ASC, t.updated_at DESC`, start, end, start, end)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	return scanIssueTodos(rows)
+}
+
+func (s *Store) ListCompletedIssueTodoCommentsBetween(ctx context.Context, start string, end string) ([]service.DayComment, error) {
+	rows, err := s.db.QueryContext(ctx, `
+SELECT t.id, 'todo_done', '完成 TODO：' || t.content, t.updated_at, i.id, i.jira_key, i.title
+FROM issue_todos t
+JOIN issues i ON i.id = t.issue_id
+WHERE t.done = 1 AND t.updated_at >= ? AND t.updated_at < ?
+ORDER BY t.updated_at ASC`, start, end)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	comments := []service.DayComment{}
+	for rows.Next() {
+		c := service.DayComment{Source: "issue"}
+		if err := rows.Scan(&c.EventID, &c.EventType, &c.ContentMD, &c.HappenedAt, &c.RefID, &c.RefKey, &c.RefTitle); err != nil {
+			return nil, err
+		}
+		comments = append(comments, c)
+	}
+	return comments, rows.Err()
 }
 
 func (s *Store) CreateIssueTodo(ctx context.Context, todo service.IssueTodo) (service.IssueTodo, error) {
@@ -469,6 +491,7 @@ SELECT MIN(date_value) FROM (
   UNION ALL SELECT substr(completed_at, 1, 10) FROM issues WHERE completed_at <> ''
   UNION ALL SELECT substr(happened_at, 1, 10) FROM issue_events WHERE happened_at <> ''
   UNION ALL SELECT substr(due_at, 1, 10) FROM issue_todos WHERE due_at <> ''
+  UNION ALL SELECT substr(updated_at, 1, 10) FROM issue_todos WHERE done = 1 AND updated_at <> ''
   UNION ALL SELECT substr(created_at, 1, 10) FROM temp_tasks WHERE created_at <> ''
   UNION ALL SELECT substr(updated_at, 1, 10) FROM temp_tasks WHERE updated_at <> ''
   UNION ALL SELECT substr(started_at, 1, 10) FROM temp_tasks WHERE started_at <> ''
@@ -531,7 +554,7 @@ FROM issue_events e
 JOIN issues i ON e.issue_id = i.id
 WHERE e.happened_at >= ? AND e.happened_at < ?
 UNION ALL
-SELECT 0, 'created', '添加 Issue', i.created_at, i.id, i.jira_key, i.title
+SELECT 0, 'created', '', i.created_at, i.id, i.jira_key, i.title
 FROM issues i
 WHERE i.created_at >= ? AND i.created_at < ?
   AND NOT EXISTS (SELECT 1 FROM activity_events a WHERE a.source = 'issue' AND a.ref_id = i.id AND a.event_type = 'created')
@@ -561,7 +584,7 @@ FROM temp_task_events e
 JOIN temp_tasks t ON e.temp_task_id = t.id
 WHERE e.happened_at >= ? AND e.happened_at < ?
 UNION ALL
-SELECT 0, 'created', '添加临时需求', t.created_at, t.id, t.title
+SELECT 0, 'created', '', t.created_at, t.id, t.title
 FROM temp_tasks t
 WHERE t.created_at >= ? AND t.created_at < ?
   AND NOT EXISTS (SELECT 1 FROM activity_events a WHERE a.source = 'temp_task' AND a.ref_id = t.id AND a.event_type = 'created')
