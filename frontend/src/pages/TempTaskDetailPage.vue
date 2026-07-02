@@ -20,8 +20,8 @@
             <n-form-item label="来源"><n-input v-model:value="form.source" placeholder="领导、同事、会议、线上问题..." @update:value="saveMetaSoon" /></n-form-item>
             <n-form-item label="状态"><n-select v-model:value="form.status" :options="statusOptions" @update:value="saveMetaSoon" /></n-form-item>
             <n-form-item label="优先级"><n-select v-model:value="form.priority" :options="priorityOptions" @update:value="saveMetaSoon" /></n-form-item>
-            <n-form-item label="开始时间"><n-date-picker v-model:value="schedule.startedAt" type="datetime" clearable class="w-full" @update:value="saveMetaSoon" /></n-form-item>
-            <n-form-item label="结束时间"><n-date-picker v-model:value="schedule.completedAt" type="datetime" clearable class="w-full" @update:value="saveMetaSoon" /></n-form-item>
+            <n-form-item label="开始时间"><TimePresetDatePicker v-model:value="schedule.startedAt" @update:value="saveMetaSoon" /></n-form-item>
+            <n-form-item label="结束时间"><TimePresetDatePicker v-model:value="schedule.completedAt" @update:value="saveMetaSoon" /></n-form-item>
           </div>
           <n-form-item label="标签"><n-dynamic-tags v-model:value="form.tags" @update:value="saveMetaSoon" /></n-form-item>
           <n-form-item label="Jira 编号"><n-input v-model:value="form.converted_jira_key" placeholder="例如 GCS-45000" @update:value="saveMetaSoon" /></n-form-item>
@@ -67,7 +67,6 @@
 import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import {
   NButton,
-  NDatePicker,
   NDynamicTags,
   NForm,
   NFormItem,
@@ -81,6 +80,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { api, downloadUrl } from '../api/client'
 import MarkdownView from '../components/MarkdownView.vue'
 import CommentTimeline from '../components/CommentTimeline.vue'
+import TimePresetDatePicker from '../components/TimePresetDatePicker.vue'
 import type { TempTask, TempTaskEvent } from '../types'
 
 const MarkdownEditor = defineAsyncComponent(() => import('../components/MarkdownEditor.vue'))

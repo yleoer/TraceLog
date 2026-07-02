@@ -86,11 +86,11 @@
         </div>
         <div v-if="!isNew" class="border-b border-gray-100 pb-3">
           <label class="field-label">开始时间</label>
-          <n-date-picker v-model:value="manual.startedAt" type="datetime" clearable size="small" class="w-full" @update:value="saveManualFieldsSoon" />
+          <TimePresetDatePicker v-model:value="manual.startedAt" @update:value="saveManualFieldsSoon" />
         </div>
         <div v-if="!isNew" class="border-b border-gray-100 pb-3">
           <label class="field-label">完成时间</label>
-          <n-date-picker v-model:value="manual.completedAt" type="datetime" clearable size="small" class="w-full" @update:value="saveManualFieldsSoon" />
+          <TimePresetDatePicker v-model:value="manual.completedAt" @update:value="saveManualFieldsSoon" />
         </div>
       </div>
 
@@ -133,7 +133,7 @@
           </div>
           <div class="grid grid-cols-1 md:grid-cols-[1fr_220px] gap-2 mb-3">
             <n-input v-model:value="todoDraft.content" size="small" placeholder="需要跟进的事项" @keyup.enter="saveTodo" />
-            <n-date-picker v-model:value="todoDraft.dueAt" type="datetime" clearable size="small" />
+            <TimePresetDatePicker v-model:value="todoDraft.dueAt" placeholder="截止时间" />
           </div>
           <div v-if="todos.length === 0" class="text-sm text-gray-400">还没有 TODO。</div>
           <div v-for="todo in todos" :key="todo.id" class="todo-item" :class="{ done: todo.done }">
@@ -141,11 +141,10 @@
             <div class="flex-1 min-w-0">
               <div class="todo-content text-sm">{{ todo.content }}</div>
             </div>
-            <n-date-picker
+            <TimePresetDatePicker
               v-if="editingTodoDueId === todo.id"
               :value="todoDueValue(todo)"
               :show="editingTodoDueId === todo.id"
-              type="datetime"
               clearable
               size="small"
               class="todo-due-picker"
@@ -179,7 +178,6 @@ import {
   NCheckbox,
   NCollapse,
   NCollapseItem,
-  NDatePicker,
   NInput,
   NInputGroup,
   NInputGroupLabel,
@@ -194,6 +192,7 @@ import CommentTimeline from '../components/CommentTimeline.vue'
 import StatusTag from '../components/StatusTag.vue'
 import TypeTag from '../components/TypeTag.vue'
 import PriorityTag from '../components/PriorityTag.vue'
+import TimePresetDatePicker from '../components/TimePresetDatePicker.vue'
 import type { Issue, IssueEvent, IssueTodo, Link } from '../types'
 import { parseJiraMeta } from '../utils/jiraDisplay'
 import { formatDateTime as sharedFormatDateTime } from '../utils/datetime'
