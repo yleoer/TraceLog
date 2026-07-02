@@ -6,6 +6,7 @@
         <h1 class="text-2xl font-bold text-gray-900 mt-0.5">{{ form.jira_key || 'GCS-' }}</h1>
       </div>
       <div class="flex items-center gap-2">
+        <n-button v-if="!isNew" size="small" :loading="refreshingJira" :disabled="saving" @click="refreshFromJira">刷新 Jira</n-button>
         <n-button v-if="!isNew" size="small" @click="downloadUrl(`/export/issues/${form.jira_key}.md`)">导出</n-button>
         <n-popconfirm v-if="!isNew" @positive-click="removeIssue">
           <template #trigger><n-button size="small" type="error" ghost>删除</n-button></template>
@@ -205,6 +206,7 @@ const router = useRouter()
 const message = useMessage()
 const saving = ref(false)
 const importing = ref(false)
+const refreshingJira = ref(false)
 const summaryGenerating = ref(false)
 const jiraInput = ref('')
 const events = ref<IssueEvent[]>([])
@@ -335,6 +337,34 @@ async function importFromJira() {
     message.error((error as Error).message)
   } finally {
     importing.value = false
+  }
+}
+
+async function refreshFromJira() {
+  const jiraKey = parseJiraKey(form.jira_key || String(route.params.jiraKey || ''))
+  if (!jiraKey || refreshingJira.value) return
+  refreshingJira.value = true
+  try {
+    await flushManualFields()
+    const imported = await api.importJiraIssue(jiraKey)
+    const updated = await api.updateIssue(jiraKey, {
+      ...form,
+      jira_key: imported.jira_key,
+      title: imported.title,
+      status: imported.status,
+      priority: imported.priority,
+      tags: imported.tags ?? [],
+      background_md: imported.background_md,
+      links: imported.links?.length ? imported.links : [{ title: 'Jira', url: `${ATLASSIAN_BASE_URL}/browse/${imported.jira_key}`, type: 'jira' }]
+    })
+    Object.assign(form, updated)
+    hydrateManualFields()
+    jiraInput.value = form.jira_key
+    message.success('已从 Jira 刷新最新数据')
+  } catch (error) {
+    message.error((error as Error).message)
+  } finally {
+    refreshingJira.value = false
   }
 }
 
