@@ -187,14 +187,14 @@ jobs:
       contents: write
 
     steps:
+      - name: Checkout release notes
+        uses: actions/checkout@v6
+
       - name: Download release artifacts
         uses: actions/download-artifact@v8
         with:
           path: release-assets
           merge-multiple: true
-
-      - name: Checkout release notes
-        uses: actions/checkout@v6
 
       - name: Publish release assets
         env:
