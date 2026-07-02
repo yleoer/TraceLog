@@ -229,6 +229,7 @@ export interface UpdateInfo {
   release_url: string
   asset_name: string
   asset_url: string
+  asset_digest: string
   published_at: string
   release_notes: string
 }
@@ -237,4 +238,5 @@ export interface UpdateInstallResult {
   started: boolean
   path: string
   message: string
+  will_quit: boolean
 }

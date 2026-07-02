@@ -8,6 +8,9 @@
   "frontend:dev:watcher": "npm run dev",
   "frontend:dev:serverUrl": "auto",
   "wailsjsdir": "frontend/src",
+  "postBuildHooks": {
+    "windows/*": "go build -trimpath -ldflags \"-s -w -H=windowsgui\" -o TraceLogUpdater.exe ../../cmd/tracelog-updater"
+  },
   "author": {
     "name": "yleoer",
     "email": "yleoer@foxmail.com"

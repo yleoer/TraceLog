@@ -12,12 +12,16 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 const (
-	githubLatestReleaseURL = "https://api.github.com/repos/yleoer/TraceLog/releases/latest"
-	updateHTTPTimeout      = 60 * time.Second
-	devUpdateMessage       = "开发版本不检查更新"
+	githubLatestReleaseURL     = "https://api.github.com/repos/yleoer/TraceLog/releases/latest"
+	updateHTTPTimeout          = 60 * time.Second
+	updateInstallerLaunchDelay = 500 * time.Millisecond
+	devUpdateMessage           = "开发版本不检查更新"
+	updaterExecutableName      = "TraceLogUpdater.exe"
 )
 
 var AppVersion = "dev"
@@ -32,14 +36,16 @@ type UpdateInfo struct {
 	ReleaseURL     string `json:"release_url"`
 	AssetName      string `json:"asset_name"`
 	AssetURL       string `json:"asset_url"`
+	AssetDigest    string `json:"asset_digest"`
 	PublishedAt    string `json:"published_at"`
 	ReleaseNotes   string `json:"release_notes"`
 }
 
 type UpdateInstallResult struct {
-	Started bool   `json:"started"`
-	Path    string `json:"path"`
-	Message string `json:"message"`
+	Started  bool   `json:"started"`
+	Path     string `json:"path"`
+	Message  string `json:"message"`
+	WillQuit bool   `json:"will_quit"`
 }
 
 type githubRelease struct {
@@ -53,6 +59,7 @@ type githubRelease struct {
 type githubAsset struct {
 	Name               string `json:"name"`
 	BrowserDownloadURL string `json:"browser_download_url"`
+	Digest             string `json:"digest"`
 }
 
 func (a *App) GetUpdateInfo() (UpdateInfo, error) {
@@ -81,14 +88,28 @@ func (a *App) InstallUpdate() (UpdateInstallResult, error) {
 		return UpdateInstallResult{}, fmt.Errorf("当前平台没有可用安装包")
 	}
 
-	path, err := downloadUpdateAsset(context.Background(), info)
+	helperLogPath, err := startUpdateHelper(info)
 	if err != nil {
 		return UpdateInstallResult{}, err
 	}
-	if err := startInstaller(path); err != nil {
-		return UpdateInstallResult{}, err
+	willQuit := a.quitSoon()
+	message := "TraceLog 将退出，更新助手会下载并安装新版本"
+	if !willQuit {
+		message = "更新助手已启动，会下载并安装新版本"
 	}
-	return UpdateInstallResult{Started: true, Path: path, Message: "安装程序已启动，请按提示完成升级"}, nil
+	return UpdateInstallResult{Started: true, Path: helperLogPath, Message: message, WillQuit: willQuit}, nil
+}
+
+func (a *App) quitSoon() bool {
+	if a.ctx == nil {
+		return false
+	}
+	ctx := a.ctx
+	go func() {
+		time.Sleep(updateInstallerLaunchDelay)
+		wailsruntime.Quit(ctx)
+	}()
+	return true
 }
 
 func fetchUpdateInfo(ctx context.Context) (UpdateInfo, error) {
@@ -127,6 +148,7 @@ func fetchUpdateInfo(ctx context.Context) (UpdateInfo, error) {
 		ReleaseURL:     release.HTMLURL,
 		AssetName:      asset.Name,
 		AssetURL:       asset.BrowserDownloadURL,
+		AssetDigest:    asset.Digest,
 		PublishedAt:    release.PublishedAt,
 		ReleaseNotes:   release.Body,
 	}, nil
@@ -163,49 +185,84 @@ func releaseAssetKeywords() []string {
 	}
 }
 
-func downloadUpdateAsset(ctx context.Context, info UpdateInfo) (string, error) {
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, info.AssetURL, nil)
+func startUpdateHelper(info UpdateInfo) (string, error) {
+	helperPath, err := findUpdateHelper()
 	if err != nil {
 		return "", err
 	}
-	request.Header.Set("User-Agent", "TraceLog-Updater/"+info.CurrentVersion)
-
-	client := &http.Client{Timeout: 10 * time.Minute}
-	response, err := client.Do(request)
+	helperPath, err = prepareUpdateHelper(helperPath)
 	if err != nil {
-		return "", fmt.Errorf("下载安装包失败: %w", err)
+		return "", err
 	}
-	defer response.Body.Close()
-	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return "", fmt.Errorf("下载安装包失败: GitHub 返回 %s", response.Status)
+	executablePath, err := os.Executable()
+	if err != nil {
+		return "", err
 	}
+	logPath := filepath.Join(os.TempDir(), "TraceLog", "TraceLogUpdater.log")
+	_ = os.MkdirAll(filepath.Dir(logPath), 0o755)
+	args := []string{
+		"--asset-url", info.AssetURL,
+		"--asset-name", info.AssetName,
+		"--asset-digest", info.AssetDigest,
+		"--current-version", info.CurrentVersion,
+		"--app-exe", executablePath,
+		"--app-pid", fmt.Sprint(os.Getpid()),
+		"--log-file", logPath,
+	}
+	if err := exec.Command(helperPath, args...).Start(); err != nil {
+		return "", err
+	}
+	return logPath, nil
+}
 
-	dir := filepath.Join(os.TempDir(), "TraceLog", "updates")
+func prepareUpdateHelper(source string) (string, error) {
+	if runtime.GOOS != "windows" {
+		return source, nil
+	}
+	dir := filepath.Join(os.TempDir(), "TraceLog", "updater")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", err
 	}
-	path := filepath.Join(dir, safeFilename(info.AssetName))
-	file, err := os.Create(path)
+	target := filepath.Join(dir, fmt.Sprintf("TraceLogUpdater-run-%d.exe", os.Getpid()))
+	input, err := os.Open(source)
 	if err != nil {
 		return "", err
 	}
-	defer file.Close()
-	if _, err := io.Copy(file, response.Body); err != nil {
+	defer input.Close()
+	output, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o755)
+	if err != nil {
 		return "", err
 	}
-	return path, nil
+	if _, err := io.Copy(output, input); err != nil {
+		_ = output.Close()
+		_ = os.Remove(target)
+		return "", err
+	}
+	if err := output.Close(); err != nil {
+		_ = os.Remove(target)
+		return "", err
+	}
+	return target, nil
 }
 
-func startInstaller(path string) error {
+func findUpdateHelper() (string, error) {
 	switch runtime.GOOS {
 	case "windows":
-		return exec.Command(path).Start()
+		executablePath, err := os.Executable()
+		if err != nil {
+			return "", err
+		}
+		path := filepath.Join(filepath.Dir(executablePath), updaterExecutableName)
+		if _, err := os.Stat(path); err != nil {
+			return "", fmt.Errorf("更新助手不存在，请下载安装包手动升级")
+		}
+		return path, nil
 	case "darwin":
-		return exec.Command("open", path).Start()
+		return "", fmt.Errorf("当前平台暂不支持更新助手，请下载安装包手动升级")
 	case "linux":
-		return exec.Command("xdg-open", path).Start()
+		return "", fmt.Errorf("当前平台暂不支持更新助手，请下载安装包手动升级")
 	default:
-		return fmt.Errorf("当前平台不支持自动启动安装包")
+		return "", fmt.Errorf("当前平台不支持自动升级")
 	}
 }
 
@@ -271,14 +328,6 @@ func partAt(parts []int, index int) int {
 		return 0
 	}
 	return parts[index]
-}
-
-func safeFilename(name string) string {
-	name = filepath.Base(strings.TrimSpace(name))
-	if name == "." || name == string(filepath.Separator) || name == "" {
-		return "TraceLog-update"
-	}
-	return name
 }
 
 func shouldSkipUpdateCheck(version string) bool {

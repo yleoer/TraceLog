@@ -40,6 +40,7 @@ export namespace desktop {
 	    release_url: string;
 	    asset_name: string;
 	    asset_url: string;
+	    asset_digest: string;
 	    published_at: string;
 	    release_notes: string;
 	
@@ -58,6 +59,7 @@ export namespace desktop {
 	        this.release_url = source["release_url"];
 	        this.asset_name = source["asset_name"];
 	        this.asset_url = source["asset_url"];
+	        this.asset_digest = source["asset_digest"];
 	        this.published_at = source["published_at"];
 	        this.release_notes = source["release_notes"];
 	    }
@@ -66,6 +68,7 @@ export namespace desktop {
 	    started: boolean;
 	    path: string;
 	    message: string;
+	    will_quit: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new UpdateInstallResult(source);
@@ -76,6 +79,7 @@ export namespace desktop {
 	        this.started = source["started"];
 	        this.path = source["path"];
 	        this.message = source["message"];
+	        this.will_quit = source["will_quit"];
 	    }
 	}
 

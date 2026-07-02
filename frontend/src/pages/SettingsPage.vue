@@ -130,12 +130,13 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
-import { NButton, NFormItem, NInput, NPopconfirm, NRadioButton, NRadioGroup, useMessage } from 'naive-ui'
+import { NButton, NFormItem, NInput, NPopconfirm, NRadioButton, NRadioGroup, useDialog, useMessage } from 'naive-ui'
 import { api, downloadUrl } from '../api/client'
 import type { AppSettings, UpdateInfo } from '../types'
 import { openExternalURL } from '../utils/openExternal'
 
 const message = useMessage()
+const dialog = useDialog()
 const saving = ref(false)
 const cleaningImages = ref(false)
 const checkingUpdate = ref(false)
@@ -160,7 +161,7 @@ const form = reactive<AppSettings>({
 const updateStatusText = computed(() => {
   if (!updateInfo.value) return '自动检查最多每 12 小时执行一次，也可手动检查更新。'
   if (updateInfo.value.skipped) return updateInfo.value.message || '开发版本不检查更新。'
-  if (updateInfo.value.has_update && updateInfo.value.asset_url) return '发现新版本，可以直接下载并启动安装程序。'
+  if (updateInfo.value.has_update && updateInfo.value.asset_url) return '发现新版本，升级时会关闭 TraceLog，并交给更新助手安装后重启。'
   if (updateInfo.value.has_update) return '发现新版本，但当前平台没有可用安装包。'
   return '当前已是最新版本。'
 })
@@ -223,10 +224,24 @@ function saveUpdateInfoCache(info: UpdateInfo) {
 }
 
 async function installUpdate() {
+  if (!updateInfo.value?.has_update || !updateInfo.value.asset_url) return
+  dialog.warning({
+    title: '确认升级',
+    content: `将由更新助手下载 ${updateInfo.value.latest_version} 安装包，随后关闭 TraceLog、完成安装并尝试重启。请先保存当前编辑内容。`,
+    positiveText: '升级并关闭',
+    negativeText: '取消',
+    onPositiveClick: startInstallUpdate
+  })
+}
+
+async function startInstallUpdate() {
   installingUpdate.value = true
   try {
     const result = await api.installUpdate()
-    if (result.message) message.success(result.message)
+    if (result.message) {
+      const type = result.will_quit ? 'warning' : 'success'
+      message[type](result.message)
+    }
   } catch (error) {
     message.error((error as Error).message)
   } finally {
