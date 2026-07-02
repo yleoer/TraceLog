@@ -3,12 +3,16 @@ package service
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"tracelog/internal/appsettings"
 )
 
 func TestSaveUploadedImageStoresPNG(t *testing.T) {
@@ -237,6 +241,185 @@ func TestBucketByDayGroupsCommentsByReference(t *testing.T) {
 	}
 	if result[0].Activities[1].Comments[0].EventType != "deleted" {
 		t.Fatalf("expected deleted temp task activity, got %#v", result[0].Activities[1])
+	}
+}
+
+func TestNormalizeLogTimeRequestBuildsDateRange(t *testing.T) {
+	input := LogTimeRequest{
+		WorkItemKey: " coretime-80 ",
+		Description: " SMF work ",
+		Hours:       8,
+		StartDate:   "2026-07-01",
+		EndDate:     "2026-07-03",
+	}
+
+	request, dates, err := normalizeLogTimeRequest(input, time.UTC)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if request.WorkItemKey != "CORETIME-80" {
+		t.Fatalf("expected normalized work item key, got %q", request.WorkItemKey)
+	}
+	if request.Description != "SMF work" {
+		t.Fatalf("expected trimmed description, got %q", request.Description)
+	}
+	expected := []string{"2026-07-01", "2026-07-02", "2026-07-03"}
+	if strings.Join(dates, ",") != strings.Join(expected, ",") {
+		t.Fatalf("expected dates %#v, got %#v", expected, dates)
+	}
+}
+
+func TestNormalizeLogTimeRequestRejectsInvalidHours(t *testing.T) {
+	_, _, err := normalizeLogTimeRequest(LogTimeRequest{
+		WorkItemKey: "CORETIME-80",
+		Description: "SMF work",
+		Hours:       9,
+		StartDate:   "2026-07-01",
+		EndDate:     "2026-07-01",
+	}, time.UTC)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+}
+
+func TestAllowedTimeWorkItem(t *testing.T) {
+	if !allowedTimeWorkItem("CORETIME-47") {
+		t.Fatal("expected CORETIME-47 to be allowed")
+	}
+	if allowedTimeWorkItem("CORETIME-999") {
+		t.Fatal("expected unknown work item to be rejected")
+	}
+}
+
+func TestUpdateSettingsFetchesTempoAuthorWhenTokenChanges(t *testing.T) {
+	var calls int
+	var authErr string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/rest/api/3/myself" {
+			http.NotFound(w, r)
+			return
+		}
+		calls++
+		email, token, ok := r.BasicAuth()
+		if !ok || email != "dev@example.com" || token != "jira-token" {
+			authErr = "unexpected jira credentials"
+			http.Error(w, authErr, http.StatusUnauthorized)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]string{"accountId": "account-123"})
+	}))
+	defer server.Close()
+
+	store := appsettings.New(filepath.Join(t.TempDir(), "settings.json"), appsettings.Settings{
+		Jira: appsettings.JiraSettings{
+			BaseURL:  server.URL,
+			Email:    "dev@example.com",
+			APIToken: "jira-token",
+		},
+		Tempo: appsettings.TempoSettings{
+			BaseURL:  "https://api.tempo.io",
+			APIToken: "old-tempo-token",
+		},
+	})
+	svc := New(nil, nil, store)
+
+	settings, err := svc.UpdateSettings(context.Background(), AppSettings{
+		Jira: JiraSettings{
+			BaseURL: server.URL,
+			Email:   "dev@example.com",
+		},
+		Tempo: TempoSettings{
+			BaseURL:  "https://api.tempo.io",
+			APIToken: "new-tempo-token",
+		},
+		AI:       AISettings{Provider: "openai"},
+		OpenAI:   ProviderSettings{BaseURL: "https://api.openai.com/v1", Model: "gpt-4.1-mini"},
+		DeepSeek: ProviderSettings{BaseURL: "https://api.deepseek.com", Model: "deepseek-v4-flash"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if authErr != "" {
+		t.Fatal(authErr)
+	}
+	if settings.Tempo.AuthorAccountID != "account-123" {
+		t.Fatalf("expected fetched account id, got %q", settings.Tempo.AuthorAccountID)
+	}
+	if calls != 1 {
+		t.Fatalf("expected one jira /myself call, got %d", calls)
+	}
+
+	saved, err := store.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if saved.Jira.APIToken != "jira-token" {
+		t.Fatalf("expected saved jira token to be preserved, got %q", saved.Jira.APIToken)
+	}
+	if saved.Tempo.APIToken != "new-tempo-token" {
+		t.Fatalf("expected new tempo token to be saved, got %q", saved.Tempo.APIToken)
+	}
+	if saved.Tempo.AuthorAccountID != "account-123" {
+		t.Fatalf("expected account id to be saved, got %q", saved.Tempo.AuthorAccountID)
+	}
+}
+
+func TestUpdateSettingsDoesNotRefetchTempoAuthorWhenTokenUnchanged(t *testing.T) {
+	var calls int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		http.Error(w, "unexpected call", http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	store := appsettings.New(filepath.Join(t.TempDir(), "settings.json"), appsettings.Settings{
+		Jira: appsettings.JiraSettings{
+			BaseURL:  server.URL,
+			Email:    "dev@example.com",
+			APIToken: "jira-token",
+		},
+		Tempo: appsettings.TempoSettings{
+			BaseURL:         "https://api.tempo.io",
+			APIToken:        "tempo-token",
+			AuthorAccountID: "account-123",
+		},
+	})
+	svc := New(nil, nil, store)
+
+	settings, err := svc.UpdateSettings(context.Background(), AppSettings{
+		Jira: JiraSettings{
+			BaseURL: server.URL,
+			Email:   "dev@example.com",
+		},
+		Tempo: TempoSettings{
+			BaseURL:         "https://api.tempo.io",
+			AuthorAccountID: "account-123",
+		},
+		AI:       AISettings{Provider: "openai"},
+		OpenAI:   ProviderSettings{BaseURL: "https://api.openai.com/v1", Model: "gpt-4.1-mini"},
+		DeepSeek: ProviderSettings{BaseURL: "https://api.deepseek.com", Model: "deepseek-v4-flash"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if settings.Tempo.AuthorAccountID != "account-123" {
+		t.Fatalf("expected existing account id, got %q", settings.Tempo.AuthorAccountID)
+	}
+	if calls != 0 {
+		t.Fatalf("did not expect jira call for unchanged tempo token, got %d", calls)
+	}
+}
+
+func TestTimeStartCalculationsAppendAfterLoggedSeconds(t *testing.T) {
+	if got := startTimeAfterLoggedSeconds(0); got != "08:00:00" {
+		t.Fatalf("expected first entry to start at 08:00:00, got %q", got)
+	}
+	if got := startTimeAfterLoggedSeconds(4 * 3600); got != "12:00:00" {
+		t.Fatalf("expected second 4h entry to start at 12:00:00, got %q", got)
+	}
+	if got := endTimeFromStart("12:00:00", 4); got != "16:00:00" {
+		t.Fatalf("expected 4h entry from noon to end at 16:00:00, got %q", got)
 	}
 }
 

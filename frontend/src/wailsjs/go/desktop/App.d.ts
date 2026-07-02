@@ -55,6 +55,8 @@ export function GetSettings():Promise<service.AppSettings>;
 
 export function GetTempTask(arg1:number):Promise<service.TempTask>;
 
+export function GetTimeWeek(arg1:string):Promise<service.TimeWeekView>;
+
 export function GetUpdateInfo():Promise<desktop.UpdateInfo>;
 
 export function GetUploadedImageDataURL(arg1:string):Promise<service.UploadedImageData>;
@@ -77,7 +79,13 @@ export function ListTempTaskEvents(arg1:number):Promise<Array<service.TempTaskEv
 
 export function ListTempTasks(arg1:service.TempTaskFilter):Promise<Array<service.TempTask>>;
 
+export function ListTimeWorkItems():Promise<Array<service.TimeWorkItem>>;
+
 export function ListWeeks():Promise<Array<service.WeeklyLog>>;
+
+export function LogTempoTime(arg1:service.LogTimeRequest):Promise<service.LogTimeResult>;
+
+export function RefreshTimeWeek(arg1:string):Promise<service.TimeWeekView>;
 
 export function Search(arg1:string,arg2:string,arg3:number,arg4:number):Promise<Array<service.SearchResult>>;
 

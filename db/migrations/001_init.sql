@@ -100,6 +100,28 @@ CREATE TABLE IF NOT EXISTS day_entries (
   updated_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS tempo_time_worklogs (
+  account_id TEXT NOT NULL,
+  tempo_worklog_id INTEGER NOT NULL,
+  work_item_key TEXT NOT NULL DEFAULT '',
+  description TEXT NOT NULL DEFAULT '',
+  start_date TEXT NOT NULL,
+  start_time TEXT NOT NULL,
+  end_time TEXT NOT NULL,
+  time_spent_seconds INTEGER NOT NULL DEFAULT 0,
+  self TEXT NOT NULL DEFAULT '',
+  cached_at TEXT NOT NULL,
+  PRIMARY KEY (account_id, tempo_worklog_id)
+);
+
+CREATE TABLE IF NOT EXISTS tempo_time_cache_ranges (
+  account_id TEXT NOT NULL,
+  start_date TEXT NOT NULL,
+  end_date TEXT NOT NULL,
+  refreshed_at TEXT NOT NULL,
+  PRIMARY KEY (account_id, start_date, end_date)
+);
+
 CREATE TABLE IF NOT EXISTS activity_events (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   source TEXT NOT NULL,
@@ -164,6 +186,8 @@ CREATE INDEX IF NOT EXISTS idx_temp_task_events_task_happened_at ON temp_task_ev
 CREATE INDEX IF NOT EXISTS idx_weekly_logs_week ON weekly_logs(week);
 CREATE INDEX IF NOT EXISTS idx_day_entries_date ON day_entries(date);
 CREATE INDEX IF NOT EXISTS idx_day_entries_date_created_at ON day_entries(date, created_at);
+CREATE INDEX IF NOT EXISTS idx_tempo_time_worklogs_account_date ON tempo_time_worklogs(account_id, start_date, start_time);
+CREATE INDEX IF NOT EXISTS idx_tempo_time_cache_ranges_account_range ON tempo_time_cache_ranges(account_id, start_date, end_date);
 CREATE INDEX IF NOT EXISTS idx_activity_events_happened_at ON activity_events(happened_at);
 CREATE INDEX IF NOT EXISTS idx_activity_events_ref ON activity_events(source, ref_id);
 CREATE INDEX IF NOT EXISTS idx_activity_events_ref_type ON activity_events(source, ref_id, event_type);
@@ -173,6 +197,8 @@ DROP TABLE IF EXISTS search_index_refs;
 DROP TABLE IF EXISTS search_index;
 DROP TABLE IF EXISTS app_schema_meta;
 DROP TABLE IF EXISTS activity_events;
+DROP TABLE IF EXISTS tempo_time_cache_ranges;
+DROP TABLE IF EXISTS tempo_time_worklogs;
 DROP TABLE IF EXISTS day_entries;
 DROP TABLE IF EXISTS weekly_logs;
 DROP TABLE IF EXISTS temp_task_events;

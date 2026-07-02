@@ -49,6 +49,21 @@
     </div>
 
     <div class="card">
+      <h2 class="card-title">Tempo</h2>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <n-form-item label="Base URL" label-placement="top">
+          <n-input v-model:value="form.tempo.base_url" size="small" placeholder="https://api.tempo.io" />
+        </n-form-item>
+        <n-form-item :label="form.tempo.has_api_token ? 'API Token（已配置）' : 'API Token'" label-placement="top">
+          <n-input v-model:value="form.tempo.api_token" size="small" type="password" show-password-on="click" placeholder="Tempo API token" />
+        </n-form-item>
+        <n-form-item label="Author Account ID" label-placement="top">
+          <n-input v-model:value="form.tempo.author_account_id" size="small" placeholder="Atlassian accountId" />
+        </n-form-item>
+      </div>
+    </div>
+
+    <div class="card">
       <h2 class="card-title">AI 总结</h2>
       <n-form-item label="默认服务" label-placement="top">
         <n-radio-group v-model:value="form.ai.provider" size="small">
@@ -152,6 +167,7 @@ interface CachedUpdateInfo {
 
 const form = reactive<AppSettings>({
   jira: { base_url: '', email: '', api_token: '', has_api_token: false },
+  tempo: { base_url: 'https://api.tempo.io', api_token: '', has_api_token: false, author_account_id: '' },
   ai: { provider: 'openai' },
   openai: { base_url: 'https://api.openai.com/v1', model: 'gpt-4.1-mini', api_key: '', has_api_key: false },
   deepseek: { base_url: 'https://api.deepseek.com', model: 'deepseek-v4-flash', api_key: '', has_api_key: false },
@@ -265,6 +281,7 @@ async function saveSettings() {
 
 function clearSecrets() {
   form.jira.api_token = ''
+  form.tempo.api_token = ''
   form.openai.api_key = ''
   form.deepseek.api_key = ''
 }

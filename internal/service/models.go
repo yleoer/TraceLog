@@ -167,6 +167,7 @@ type TodayWorkflow struct {
 
 type AppSettings struct {
 	Jira     JiraSettings     `json:"jira"`
+	Tempo    TempoSettings    `json:"tempo"`
 	AI       AISettings       `json:"ai"`
 	OpenAI   ProviderSettings `json:"openai"`
 	DeepSeek ProviderSettings `json:"deepseek"`
@@ -178,6 +179,13 @@ type JiraSettings struct {
 	Email       string `json:"email"`
 	APIToken    string `json:"api_token,omitempty"`
 	HasAPIToken bool   `json:"has_api_token"`
+}
+
+type TempoSettings struct {
+	BaseURL         string `json:"base_url"`
+	APIToken        string `json:"api_token,omitempty"`
+	HasAPIToken     bool   `json:"has_api_token"`
+	AuthorAccountID string `json:"author_account_id"`
 }
 
 type AISettings struct {
@@ -237,4 +245,75 @@ type TempTaskFilter struct {
 	Limit  int
 	Offset int
 	All    bool
+}
+
+type TimeWorkItem struct {
+	Key   string `json:"key"`
+	Label string `json:"label"`
+}
+
+type LogTimeRequest struct {
+	WorkItemKey string `json:"work_item_key"`
+	Description string `json:"description"`
+	Hours       int    `json:"hours"`
+	StartDate   string `json:"start_date"`
+	EndDate     string `json:"end_date"`
+}
+
+type LogTimeResult struct {
+	WorkItemKey string         `json:"work_item_key"`
+	Description string         `json:"description"`
+	Hours       int            `json:"hours"`
+	StartDate   string         `json:"start_date"`
+	EndDate     string         `json:"end_date"`
+	Total       int            `json:"total"`
+	Successful  int            `json:"successful"`
+	Failed      int            `json:"failed"`
+	Entries     []LogTimeEntry `json:"entries"`
+}
+
+type LogTimeEntry struct {
+	Date           string `json:"date"`
+	TempoWorklogID int64  `json:"tempo_worklog_id"`
+	Self           string `json:"self"`
+	StartTime      string `json:"start_time"`
+	EndTime        string `json:"end_time"`
+	Error          string `json:"error,omitempty"`
+}
+
+type TimeWeekView struct {
+	Week       string         `json:"week"`
+	StartDate  string         `json:"start_date"`
+	EndDate    string         `json:"end_date"`
+	Worklogs   []TimeWorklog  `json:"worklogs"`
+	Days       []TimeDay      `json:"days"`
+	TotalHours float64        `json:"total_hours"`
+	WorkItems  []TimeWorkItem `json:"work_items"`
+}
+
+type TimeDay struct {
+	Date       string        `json:"date"`
+	Weekday    string        `json:"weekday"`
+	Worklogs   []TimeWorklog `json:"worklogs"`
+	TotalHours float64       `json:"total_hours"`
+}
+
+type TimeWorklog struct {
+	TempoWorklogID   int64   `json:"tempo_worklog_id"`
+	WorkItemKey      string  `json:"work_item_key"`
+	WorkItemLabel    string  `json:"work_item_label"`
+	Description      string  `json:"description"`
+	StartDate        string  `json:"start_date"`
+	StartTime        string  `json:"start_time"`
+	EndTime          string  `json:"end_time"`
+	TimeSpentSeconds int64   `json:"time_spent_seconds"`
+	Hours            float64 `json:"hours"`
+	Self             string  `json:"self"`
+}
+
+type TimeCacheRange struct {
+	AccountID   string `json:"account_id"`
+	StartDate   string `json:"start_date"`
+	EndDate     string `json:"end_date"`
+	RefreshedAt string `json:"refreshed_at"`
 }

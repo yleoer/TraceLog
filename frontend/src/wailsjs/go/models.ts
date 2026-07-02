@@ -131,6 +131,24 @@ export namespace service {
 	        this.has_api_key = source["has_api_key"];
 	    }
 	}
+	export class TempoSettings {
+	    base_url: string;
+	    api_token?: string;
+	    has_api_token: boolean;
+	    author_account_id: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new TempoSettings(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.base_url = source["base_url"];
+	        this.api_token = source["api_token"];
+	        this.has_api_token = source["has_api_token"];
+	        this.author_account_id = source["author_account_id"];
+	    }
+	}
 	export class JiraSettings {
 	    base_url: string;
 	    email: string;
@@ -151,6 +169,7 @@ export namespace service {
 	}
 	export class AppSettings {
 	    jira: JiraSettings;
+	    tempo: TempoSettings;
 	    ai: AISettings;
 	    openai: ProviderSettings;
 	    deepseek: ProviderSettings;
@@ -163,6 +182,7 @@ export namespace service {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.jira = this.convertValues(source["jira"], JiraSettings);
+	        this.tempo = this.convertValues(source["tempo"], TempoSettings);
 	        this.ai = this.convertValues(source["ai"], AISettings);
 	        this.openai = this.convertValues(source["openai"], ProviderSettings);
 	        this.deepseek = this.convertValues(source["deepseek"], ProviderSettings);
@@ -648,6 +668,94 @@ export namespace service {
 	
 	
 	
+	export class LogTimeEntry {
+	    date: string;
+	    tempo_worklog_id: number;
+	    self: string;
+	    start_time: string;
+	    end_time: string;
+	    error?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new LogTimeEntry(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.date = source["date"];
+	        this.tempo_worklog_id = source["tempo_worklog_id"];
+	        this.self = source["self"];
+	        this.start_time = source["start_time"];
+	        this.end_time = source["end_time"];
+	        this.error = source["error"];
+	    }
+	}
+	export class LogTimeRequest {
+	    work_item_key: string;
+	    description: string;
+	    hours: number;
+	    start_date: string;
+	    end_date: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new LogTimeRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.work_item_key = source["work_item_key"];
+	        this.description = source["description"];
+	        this.hours = source["hours"];
+	        this.start_date = source["start_date"];
+	        this.end_date = source["end_date"];
+	    }
+	}
+	export class LogTimeResult {
+	    work_item_key: string;
+	    description: string;
+	    hours: number;
+	    start_date: string;
+	    end_date: string;
+	    total: number;
+	    successful: number;
+	    failed: number;
+	    entries: LogTimeEntry[];
+	
+	    static createFrom(source: any = {}) {
+	        return new LogTimeResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.work_item_key = source["work_item_key"];
+	        this.description = source["description"];
+	        this.hours = source["hours"];
+	        this.start_date = source["start_date"];
+	        this.end_date = source["end_date"];
+	        this.total = source["total"];
+	        this.successful = source["successful"];
+	        this.failed = source["failed"];
+	        this.entries = this.convertValues(source["entries"], LogTimeEntry);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	
 	
 	export class SearchResult {
@@ -719,6 +827,131 @@ export namespace service {
 	        this.All = source["All"];
 	    }
 	}
+	
+	export class TimeWorklog {
+	    tempo_worklog_id: number;
+	    work_item_key: string;
+	    work_item_label: string;
+	    description: string;
+	    start_date: string;
+	    start_time: string;
+	    end_time: string;
+	    time_spent_seconds: number;
+	    hours: number;
+	    self: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new TimeWorklog(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.tempo_worklog_id = source["tempo_worklog_id"];
+	        this.work_item_key = source["work_item_key"];
+	        this.work_item_label = source["work_item_label"];
+	        this.description = source["description"];
+	        this.start_date = source["start_date"];
+	        this.start_time = source["start_time"];
+	        this.end_time = source["end_time"];
+	        this.time_spent_seconds = source["time_spent_seconds"];
+	        this.hours = source["hours"];
+	        this.self = source["self"];
+	    }
+	}
+	export class TimeDay {
+	    date: string;
+	    weekday: string;
+	    worklogs: TimeWorklog[];
+	    total_hours: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new TimeDay(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.date = source["date"];
+	        this.weekday = source["weekday"];
+	        this.worklogs = this.convertValues(source["worklogs"], TimeWorklog);
+	        this.total_hours = source["total_hours"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class TimeWorkItem {
+	    key: string;
+	    label: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new TimeWorkItem(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.key = source["key"];
+	        this.label = source["label"];
+	    }
+	}
+	export class TimeWeekView {
+	    week: string;
+	    start_date: string;
+	    end_date: string;
+	    worklogs: TimeWorklog[];
+	    days: TimeDay[];
+	    total_hours: number;
+	    work_items: TimeWorkItem[];
+	
+	    static createFrom(source: any = {}) {
+	        return new TimeWeekView(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.week = source["week"];
+	        this.start_date = source["start_date"];
+	        this.end_date = source["end_date"];
+	        this.worklogs = this.convertValues(source["worklogs"], TimeWorklog);
+	        this.days = this.convertValues(source["days"], TimeDay);
+	        this.total_hours = source["total_hours"];
+	        this.work_items = this.convertValues(source["work_items"], TimeWorkItem);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	
 	export class TodayWorkflow {
 	    date: string;
 	    issues: Issue[];

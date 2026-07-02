@@ -165,6 +165,7 @@ export interface TodayWorkflow {
 
 export interface AppSettings {
   jira: JiraSettings
+  tempo: TempoSettings
   ai: AISettings
   openai: ProviderSettings
   deepseek: ProviderSettings
@@ -176,6 +177,13 @@ export interface JiraSettings {
   email: string
   api_token?: string
   has_api_token: boolean
+}
+
+export interface TempoSettings {
+  base_url: string
+  api_token?: string
+  has_api_token: boolean
+  author_account_id: string
 }
 
 export interface AISettings {
@@ -239,4 +247,68 @@ export interface UpdateInstallResult {
   path: string
   message: string
   will_quit: boolean
+}
+
+export interface TimeWorkItem {
+  key: string
+  label: string
+}
+
+export interface LogTimeRequest {
+  work_item_key: string
+  description: string
+  hours: number
+  start_date: string
+  end_date: string
+}
+
+export interface LogTimeResult {
+  work_item_key: string
+  description: string
+  hours: number
+  start_date: string
+  end_date: string
+  total: number
+  successful: number
+  failed: number
+  entries: LogTimeEntry[]
+}
+
+export interface LogTimeEntry {
+  date: string
+  tempo_worklog_id: number
+  self: string
+  start_time: string
+  end_time: string
+  error?: string
+}
+
+export interface TimeWeekView {
+  week: string
+  start_date: string
+  end_date: string
+  worklogs: TimeWorklog[]
+  days: TimeDay[]
+  total_hours: number
+  work_items: TimeWorkItem[]
+}
+
+export interface TimeDay {
+  date: string
+  weekday: string
+  worklogs: TimeWorklog[]
+  total_hours: number
+}
+
+export interface TimeWorklog {
+  tempo_worklog_id: number
+  work_item_key: string
+  work_item_label: string
+  description: string
+  start_date: string
+  start_time: string
+  end_time: string
+  time_spent_seconds: number
+  hours: number
+  self: string
 }

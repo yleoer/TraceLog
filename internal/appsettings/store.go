@@ -11,6 +11,7 @@ import (
 
 type Settings struct {
 	Jira     JiraSettings     `json:"jira"`
+	Tempo    TempoSettings    `json:"tempo"`
 	AI       AISettings       `json:"ai"`
 	OpenAI   ProviderSettings `json:"openai"`
 	DeepSeek ProviderSettings `json:"deepseek"`
@@ -22,6 +23,13 @@ type JiraSettings struct {
 	Email       string `json:"email"`
 	APIToken    string `json:"api_token,omitempty"`
 	HasAPIToken bool   `json:"has_api_token"`
+}
+
+type TempoSettings struct {
+	BaseURL         string `json:"base_url"`
+	APIToken        string `json:"api_token,omitempty"`
+	HasAPIToken     bool   `json:"has_api_token"`
+	AuthorAccountID string `json:"author_account_id"`
 }
 
 type AISettings struct {
@@ -72,6 +80,9 @@ func (s *Store) Save(input Settings) (Settings, error) {
 	if merged.Jira.APIToken == "" {
 		merged.Jira.APIToken = existing.Jira.APIToken
 	}
+	if merged.Tempo.APIToken == "" {
+		merged.Tempo.APIToken = existing.Tempo.APIToken
+	}
 	if merged.OpenAI.APIKey == "" {
 		merged.OpenAI.APIKey = existing.OpenAI.APIKey
 	}
@@ -96,6 +107,8 @@ func (s *Store) Save(input Settings) (Settings, error) {
 func Public(settings Settings) Settings {
 	settings.Jira.HasAPIToken = settings.Jira.APIToken != ""
 	settings.Jira.APIToken = ""
+	settings.Tempo.HasAPIToken = settings.Tempo.APIToken != ""
+	settings.Tempo.APIToken = ""
 	settings.OpenAI.HasAPIKey = settings.OpenAI.APIKey != ""
 	settings.OpenAI.APIKey = ""
 	settings.DeepSeek.HasAPIKey = settings.DeepSeek.APIKey != ""
@@ -122,6 +135,13 @@ func normalize(settings Settings) Settings {
 	settings.Jira.BaseURL = strings.TrimRight(strings.TrimSpace(settings.Jira.BaseURL), "/")
 	settings.Jira.Email = strings.TrimSpace(settings.Jira.Email)
 	settings.Jira.APIToken = strings.TrimSpace(settings.Jira.APIToken)
+	settings.Tempo.BaseURL = strings.TrimRight(strings.TrimSpace(settings.Tempo.BaseURL), "/")
+	if settings.Tempo.BaseURL == "" {
+		settings.Tempo.BaseURL = "https://api.tempo.io"
+	}
+	settings.Tempo.BaseURL = strings.TrimSuffix(settings.Tempo.BaseURL, "/4")
+	settings.Tempo.APIToken = strings.TrimSpace(settings.Tempo.APIToken)
+	settings.Tempo.AuthorAccountID = strings.TrimSpace(settings.Tempo.AuthorAccountID)
 	settings.AI.Provider = strings.TrimSpace(strings.ToLower(settings.AI.Provider))
 	if settings.AI.Provider == "" {
 		settings.AI.Provider = "openai"

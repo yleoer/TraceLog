@@ -55,6 +55,26 @@ CREATE TABLE IF NOT EXISTS app_schema_meta (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS tempo_time_worklogs (
+  account_id TEXT NOT NULL,
+  tempo_worklog_id INTEGER NOT NULL,
+  work_item_key TEXT NOT NULL DEFAULT '',
+  description TEXT NOT NULL DEFAULT '',
+  start_date TEXT NOT NULL,
+  start_time TEXT NOT NULL,
+  end_time TEXT NOT NULL,
+  time_spent_seconds INTEGER NOT NULL DEFAULT 0,
+  self TEXT NOT NULL DEFAULT '',
+  cached_at TEXT NOT NULL,
+  PRIMARY KEY (account_id, tempo_worklog_id)
+);
+CREATE TABLE IF NOT EXISTS tempo_time_cache_ranges (
+  account_id TEXT NOT NULL,
+  start_date TEXT NOT NULL,
+  end_date TEXT NOT NULL,
+  refreshed_at TEXT NOT NULL,
+  PRIMARY KEY (account_id, start_date, end_date)
+);
 CREATE INDEX IF NOT EXISTS idx_issues_created_at ON issues(created_at);
 CREATE INDEX IF NOT EXISTS idx_issues_updated_at ON issues(updated_at);
 CREATE INDEX IF NOT EXISTS idx_issues_status ON issues(status);
@@ -85,6 +105,8 @@ CREATE INDEX IF NOT EXISTS idx_temp_task_events_task_happened_at ON temp_task_ev
 CREATE INDEX IF NOT EXISTS idx_weekly_logs_week ON weekly_logs(week);
 CREATE INDEX IF NOT EXISTS idx_day_entries_date ON day_entries(date);
 CREATE INDEX IF NOT EXISTS idx_day_entries_date_created_at ON day_entries(date, created_at);
+CREATE INDEX IF NOT EXISTS idx_tempo_time_worklogs_account_date ON tempo_time_worklogs(account_id, start_date, start_time);
+CREATE INDEX IF NOT EXISTS idx_tempo_time_cache_ranges_account_range ON tempo_time_cache_ranges(account_id, start_date, end_date);
 CREATE INDEX IF NOT EXISTS idx_activity_events_happened_at ON activity_events(happened_at);
 CREATE INDEX IF NOT EXISTS idx_activity_events_ref ON activity_events(source, ref_id);
 CREATE INDEX IF NOT EXISTS idx_activity_events_ref_type ON activity_events(source, ref_id, event_type);`
@@ -814,6 +836,58 @@ func (s *Store) DeleteDayEntry(ctx context.Context, id int64) error {
 	return err
 }
 
+func (s *Store) ListCachedTimeWorklogs(ctx context.Context, accountID string, startDate string, endDate string) ([]service.TimeWorklog, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT tempo_worklog_id, work_item_key, description, start_date, start_time, end_time, time_spent_seconds, self FROM tempo_time_worklogs WHERE account_id = ? AND start_date >= ? AND start_date <= ? ORDER BY start_date ASC, start_time ASC, tempo_worklog_id ASC`, accountID, startDate, endDate)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanTimeWorklogs(rows)
+}
+
+func (s *Store) ReplaceCachedTimeWorklogs(ctx context.Context, accountID string, startDate string, endDate string, worklogs []service.TimeWorklog, cachedAt string) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, `DELETE FROM tempo_time_worklogs WHERE account_id = ? AND start_date >= ? AND start_date <= ?`, accountID, startDate, endDate); err != nil {
+		return err
+	}
+	for _, worklog := range worklogs {
+		if err := upsertCachedTimeWorklogTx(ctx, tx, accountID, worklog, cachedAt); err != nil {
+			return err
+		}
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO tempo_time_cache_ranges (account_id, start_date, end_date, refreshed_at) VALUES (?, ?, ?, ?) ON CONFLICT(account_id, start_date, end_date) DO UPDATE SET refreshed_at = excluded.refreshed_at`, accountID, startDate, endDate, cachedAt); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func (s *Store) UpsertCachedTimeWorklog(ctx context.Context, accountID string, worklog service.TimeWorklog, cachedAt string) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if err := upsertCachedTimeWorklogTx(ctx, tx, accountID, worklog, cachedAt); err != nil {
+		return err
+	}
+	if worklog.StartDate != "" {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO tempo_time_cache_ranges (account_id, start_date, end_date, refreshed_at) VALUES (?, ?, ?, ?) ON CONFLICT(account_id, start_date, end_date) DO UPDATE SET refreshed_at = excluded.refreshed_at`, accountID, worklog.StartDate, worklog.StartDate, cachedAt); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+func (s *Store) GetTimeCacheRange(ctx context.Context, accountID string, startDate string, endDate string) (service.TimeCacheRange, error) {
+	var cacheRange service.TimeCacheRange
+	err := s.db.QueryRowContext(ctx, `SELECT account_id, start_date, end_date, refreshed_at FROM tempo_time_cache_ranges WHERE account_id = ? AND start_date <= ? AND end_date >= ? ORDER BY start_date ASC, end_date DESC LIMIT 1`, accountID, startDate, endDate).Scan(&cacheRange.AccountID, &cacheRange.StartDate, &cacheRange.EndDate, &cacheRange.RefreshedAt)
+	return cacheRange, err
+}
+
 func (s *Store) UpsertSearchIndex(ctx context.Context, entityType string, entityID string, title string, body string, updatedAt string) error {
 	if err := s.DeleteSearchIndex(ctx, entityType, entityID); err != nil {
 		return err
@@ -1388,6 +1462,31 @@ func scanWeeklyLogRow(row scanner) (service.WeeklyLog, error) {
 	var log service.WeeklyLog
 	err := row.Scan(&log.ID, &log.Week, &log.SummaryMD, &log.NextPlanMD, &log.CreatedAt, &log.UpdatedAt)
 	return log, err
+}
+
+func upsertCachedTimeWorklogTx(ctx context.Context, tx *sql.Tx, accountID string, worklog service.TimeWorklog, cachedAt string) error {
+	_, err := tx.ExecContext(ctx, `INSERT INTO tempo_time_worklogs (account_id, tempo_worklog_id, work_item_key, description, start_date, start_time, end_time, time_spent_seconds, self, cached_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(account_id, tempo_worklog_id) DO UPDATE SET work_item_key = excluded.work_item_key, description = excluded.description, start_date = excluded.start_date, start_time = excluded.start_time, end_time = excluded.end_time, time_spent_seconds = excluded.time_spent_seconds, self = excluded.self, cached_at = excluded.cached_at`,
+		accountID, worklog.TempoWorklogID, worklog.WorkItemKey, worklog.Description, worklog.StartDate, worklog.StartTime, worklog.EndTime, worklog.TimeSpentSeconds, worklog.Self, cachedAt)
+	return err
+}
+
+func scanTimeWorklog(row scanner) (service.TimeWorklog, error) {
+	var worklog service.TimeWorklog
+	err := row.Scan(&worklog.TempoWorklogID, &worklog.WorkItemKey, &worklog.Description, &worklog.StartDate, &worklog.StartTime, &worklog.EndTime, &worklog.TimeSpentSeconds, &worklog.Self)
+	worklog.Hours = float64(worklog.TimeSpentSeconds) / 3600
+	return worklog, err
+}
+
+func scanTimeWorklogs(rows *sql.Rows) ([]service.TimeWorklog, error) {
+	worklogs := []service.TimeWorklog{}
+	for rows.Next() {
+		worklog, err := scanTimeWorklog(rows)
+		if err != nil {
+			return nil, err
+		}
+		worklogs = append(worklogs, worklog)
+	}
+	return worklogs, rows.Err()
 }
 
 func limitOrDefault(limit int) int {

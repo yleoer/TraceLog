@@ -259,6 +259,54 @@ func TestListCompletedIssueTodoCommentsBetweenReturnsDoneTodos(t *testing.T) {
 	}
 }
 
+func TestTempoTimeCacheStoresRangesAndWorklogs(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+	worklog := service.TimeWorklog{
+		TempoWorklogID:   1001,
+		WorkItemKey:      "CORETIME-80",
+		Description:      "cached work",
+		StartDate:        "2026-07-01",
+		StartTime:        "08:00:00",
+		EndTime:          "12:00:00",
+		TimeSpentSeconds: 4 * 3600,
+		Self:             "https://api.tempo.io/4/worklogs/1001",
+	}
+
+	if err := store.ReplaceCachedTimeWorklogs(ctx, "account-1", "2026-06-29", "2026-07-05", []service.TimeWorklog{worklog}, "2026-07-02T00:00:00Z"); err != nil {
+		t.Fatal(err)
+	}
+	cacheRange, err := store.GetTimeCacheRange(ctx, "account-1", "2026-07-01", "2026-07-01")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cacheRange.StartDate != "2026-06-29" || cacheRange.EndDate != "2026-07-05" {
+		t.Fatalf("expected enclosing week cache range, got %#v", cacheRange)
+	}
+
+	worklogs, err := store.ListCachedTimeWorklogs(ctx, "account-1", "2026-07-01", "2026-07-01")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(worklogs) != 1 || worklogs[0].TempoWorklogID != 1001 || worklogs[0].Hours != 4 {
+		t.Fatalf("expected cached worklog, got %#v", worklogs)
+	}
+
+	worklog.TempoWorklogID = 1002
+	worklog.StartTime = "12:00:00"
+	worklog.EndTime = "16:00:00"
+	if err := store.UpsertCachedTimeWorklog(ctx, "account-1", worklog, "2026-07-02T01:00:00Z"); err != nil {
+		t.Fatal(err)
+	}
+	worklogs, err = store.ListCachedTimeWorklogs(ctx, "account-1", "2026-07-01", "2026-07-01")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(worklogs) != 2 {
+		t.Fatalf("expected appended cached worklog, got %#v", worklogs)
+	}
+}
+
 func newTestStore(t *testing.T) *Store {
 	t.Helper()
 	db, err := sql.Open("sqlite", ":memory:")
@@ -361,6 +409,26 @@ CREATE TABLE day_entries (
   content_md TEXT NOT NULL,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
+);
+CREATE TABLE tempo_time_worklogs (
+  account_id TEXT NOT NULL,
+  tempo_worklog_id INTEGER NOT NULL,
+  work_item_key TEXT NOT NULL DEFAULT '',
+  description TEXT NOT NULL DEFAULT '',
+  start_date TEXT NOT NULL,
+  start_time TEXT NOT NULL,
+  end_time TEXT NOT NULL,
+  time_spent_seconds INTEGER NOT NULL DEFAULT 0,
+  self TEXT NOT NULL DEFAULT '',
+  cached_at TEXT NOT NULL,
+  PRIMARY KEY (account_id, tempo_worklog_id)
+);
+CREATE TABLE tempo_time_cache_ranges (
+  account_id TEXT NOT NULL,
+  start_date TEXT NOT NULL,
+  end_date TEXT NOT NULL,
+  refreshed_at TEXT NOT NULL,
+  PRIMARY KEY (account_id, start_date, end_date)
 );
 CREATE TABLE activity_events (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

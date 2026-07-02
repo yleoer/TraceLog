@@ -50,6 +50,7 @@ import {
   PanelLeftOpen,
   Search,
   Settings,
+  Timer,
   TimerReset
 } from 'lucide-vue-next'
 
@@ -59,6 +60,7 @@ const collapsed = ref(false)
 const navItems = [
   { path: '/', label: 'Dashboard', icon: Home },
   { path: '/today', label: '今日', icon: TimerReset },
+  { path: '/time', label: 'Time', icon: Timer },
   { path: '/issues', label: 'Issues', icon: ClipboardList },
   { path: '/temp-tasks', label: '临时需求', icon: FileText },
   { path: '/weeks', label: '周视图', icon: CalendarDays },
@@ -69,6 +71,7 @@ const navItems = [
 const activeKey = computed(() => {
   if (route.path.startsWith('/issues')) return '/issues'
   if (route.path.startsWith('/today')) return '/today'
+  if (route.path.startsWith('/time')) return '/time'
   if (route.path.startsWith('/temp-tasks')) return '/temp-tasks'
   if (route.path.startsWith('/weeks')) return '/weeks'
   if (route.path.startsWith('/search')) return '/search'

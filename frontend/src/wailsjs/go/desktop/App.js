@@ -106,6 +106,10 @@ export function GetTempTask(arg1) {
   return window['go']['desktop']['App']['GetTempTask'](arg1);
 }
 
+export function GetTimeWeek(arg1) {
+  return window['go']['desktop']['App']['GetTimeWeek'](arg1);
+}
+
 export function GetUpdateInfo() {
   return window['go']['desktop']['App']['GetUpdateInfo']();
 }
@@ -150,8 +154,20 @@ export function ListTempTasks(arg1) {
   return window['go']['desktop']['App']['ListTempTasks'](arg1);
 }
 
+export function ListTimeWorkItems() {
+  return window['go']['desktop']['App']['ListTimeWorkItems']();
+}
+
 export function ListWeeks() {
   return window['go']['desktop']['App']['ListWeeks']();
+}
+
+export function LogTempoTime(arg1) {
+  return window['go']['desktop']['App']['LogTempoTime'](arg1);
+}
+
+export function RefreshTimeWeek(arg1) {
+  return window['go']['desktop']['App']['RefreshTimeWeek'](arg1);
 }
 
 export function Search(arg1, arg2, arg3, arg4) {

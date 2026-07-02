@@ -24,6 +24,7 @@ type Client struct {
 }
 
 type Issue struct {
+	ID     string      `json:"id"`
 	Key    string      `json:"key"`
 	Self   string      `json:"self"`
 	Fields IssueFields `json:"fields"`
@@ -56,6 +57,7 @@ type StatusCategory struct {
 }
 
 type User struct {
+	AccountID   string `json:"accountId"`
 	DisplayName string `json:"displayName"`
 	Email       string `json:"emailAddress"`
 }
@@ -141,6 +143,7 @@ func (c *Client) GetIssue(ctx context.Context, issueKey string) (Issue, error) {
 	}
 
 	var rawIssue struct {
+		ID     string          `json:"id"`
 		Key    string          `json:"key"`
 		Self   string          `json:"self"`
 		Fields json.RawMessage `json:"fields"`
@@ -160,10 +163,94 @@ func (c *Client) GetIssue(ctx context.Context, issueKey string) (Issue, error) {
 		fields.ReleaseRequested = releaseRequested
 	}
 	return Issue{
+		ID:     rawIssue.ID,
 		Key:    rawIssue.Key,
 		Self:   rawIssue.Self,
 		Fields: fields,
 	}, nil
+}
+
+func (c *Client) GetIssueID(ctx context.Context, issueKey string) (int64, error) {
+	if !c.Configured() {
+		return 0, ErrNotConfigured
+	}
+	query := url.Values{}
+	query.Set("fields", "summary")
+	endpoint := fmt.Sprintf(
+		"%s/rest/api/3/issue/%s?%s",
+		c.baseURL,
+		url.PathEscape(strings.ToUpper(issueKey)),
+		query.Encode(),
+	)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return 0, err
+	}
+	req.SetBasicAuth(c.email, c.apiToken)
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return 0, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+		return 0, ErrUnauthorized
+	}
+	if resp.StatusCode == http.StatusNotFound {
+		return 0, ErrNotFound
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return 0, fmt.Errorf("jira returned status %d", resp.StatusCode)
+	}
+
+	var issue struct {
+		ID json.Number `json:"id"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&issue); err != nil {
+		return 0, err
+	}
+	id, err := issue.ID.Int64()
+	if err != nil || id <= 0 {
+		return 0, fmt.Errorf("jira issue id is invalid")
+	}
+	return id, nil
+}
+
+func (c *Client) Myself(ctx context.Context) (User, error) {
+	if !c.Configured() {
+		return User{}, ErrNotConfigured
+	}
+	endpoint := c.baseURL + "/rest/api/3/myself"
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return User{}, err
+	}
+	req.SetBasicAuth(c.email, c.apiToken)
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return User{}, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+		return User{}, ErrUnauthorized
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return User{}, fmt.Errorf("jira returned status %d", resp.StatusCode)
+	}
+
+	var user User
+	if err := json.NewDecoder(resp.Body).Decode(&user); err != nil {
+		return User{}, err
+	}
+	if user.AccountID == "" {
+		return User{}, fmt.Errorf("jira account id is empty")
+	}
+	return user, nil
 }
 
 func (c *Client) findFieldID(ctx context.Context, fieldName string) (string, error) {

@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 
 const DashboardPage = () => import('../pages/DashboardPage.vue')
 const TodayPage = () => import('../pages/TodayPage.vue')
+const TimeLogPage = () => import('../pages/TimeLogPage.vue')
 const IssueListPage = () => import('../pages/IssueListPage.vue')
 const IssueDetailPage = () => import('../pages/IssueDetailPage.vue')
 const TempTaskListPage = () => import('../pages/TempTaskListPage.vue')
@@ -15,6 +16,7 @@ const router = createRouter({
   routes: [
     { path: '/', component: DashboardPage },
     { path: '/today', component: TodayPage },
+    { path: '/time', component: TimeLogPage },
     { path: '/issues', component: IssueListPage },
     { path: '/issues/new', component: IssueDetailPage },
     { path: '/issues/:jiraKey', component: IssueDetailPage },

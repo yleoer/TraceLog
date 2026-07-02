@@ -92,6 +92,22 @@ func (a *App) UpdateSettings(settings service.AppSettings) (service.AppSettings,
 	return a.service.UpdateSettings(context.Background(), settings)
 }
 
+func (a *App) ListTimeWorkItems() ([]service.TimeWorkItem, error) {
+	return a.service.ListTimeWorkItems(context.Background())
+}
+
+func (a *App) GetTimeWeek(week string) (service.TimeWeekView, error) {
+	return a.service.GetTimeWeek(context.Background(), week)
+}
+
+func (a *App) RefreshTimeWeek(week string) (service.TimeWeekView, error) {
+	return a.service.RefreshTimeWeek(context.Background(), week)
+}
+
+func (a *App) LogTempoTime(request service.LogTimeRequest) (service.LogTimeResult, error) {
+	return a.service.LogTempoTime(context.Background(), request)
+}
+
 func (a *App) ListIssues(filter service.IssueFilter) ([]service.Issue, error) {
 	return a.service.ListIssues(context.Background(), filter)
 }
