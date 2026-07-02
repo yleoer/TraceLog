@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 
@@ -19,6 +20,11 @@ import (
 	"tracelog/internal/config"
 	"tracelog/internal/db"
 	"tracelog/internal/service"
+)
+
+const (
+	desktopCallTimeout     = 2 * time.Minute
+	desktopLongCallTimeout = 5 * time.Minute
 )
 
 type App struct {
@@ -76,96 +82,158 @@ func (a *App) Shutdown(ctx context.Context) {
 	}
 }
 
+func (a *App) callContext(timeout time.Duration) (context.Context, context.CancelFunc) {
+	base := a.ctx
+	if base == nil {
+		base = context.Background()
+	}
+	return context.WithTimeout(base, timeout)
+}
+
+func (a *App) defaultCallContext() (context.Context, context.CancelFunc) {
+	return a.callContext(desktopCallTimeout)
+}
+
+func (a *App) longCallContext() (context.Context, context.CancelFunc) {
+	return a.callContext(desktopLongCallTimeout)
+}
+
 func (a *App) Dashboard() (service.Dashboard, error) {
-	return a.service.Dashboard(context.Background())
+	ctx, cancel := a.defaultCallContext()
+	defer cancel()
+	return a.service.Dashboard(ctx)
 }
 
 func (a *App) Today() (service.TodayWorkflow, error) {
-	return a.service.TodayWorkflow(context.Background())
+	ctx, cancel := a.defaultCallContext()
+	defer cancel()
+	return a.service.TodayWorkflow(ctx)
 }
 
 func (a *App) GetSettings() (service.AppSettings, error) {
-	return a.service.GetSettings(context.Background())
+	ctx, cancel := a.defaultCallContext()
+	defer cancel()
+	return a.service.GetSettings(ctx)
 }
 
 func (a *App) UpdateSettings(settings service.AppSettings) (service.AppSettings, error) {
-	return a.service.UpdateSettings(context.Background(), settings)
+	ctx, cancel := a.longCallContext()
+	defer cancel()
+	return a.service.UpdateSettings(ctx, settings)
 }
 
 func (a *App) ListTimeWorkItems() ([]service.TimeWorkItem, error) {
-	return a.service.ListTimeWorkItems(context.Background())
+	ctx, cancel := a.defaultCallContext()
+	defer cancel()
+	return a.service.ListTimeWorkItems(ctx)
 }
 
 func (a *App) GetTimeWeek(week string) (service.TimeWeekView, error) {
-	return a.service.GetTimeWeek(context.Background(), week)
+	ctx, cancel := a.defaultCallContext()
+	defer cancel()
+	return a.service.GetTimeWeek(ctx, week)
 }
 
 func (a *App) RefreshTimeWeek(week string) (service.TimeWeekView, error) {
-	return a.service.RefreshTimeWeek(context.Background(), week)
+	ctx, cancel := a.longCallContext()
+	defer cancel()
+	return a.service.RefreshTimeWeek(ctx, week)
 }
 
 func (a *App) LogTempoTime(request service.LogTimeRequest) (service.LogTimeResult, error) {
-	return a.service.LogTempoTime(context.Background(), request)
+	ctx, cancel := a.longCallContext()
+	defer cancel()
+	return a.service.LogTempoTime(ctx, request)
 }
 
 func (a *App) ListIssues(filter service.IssueFilter) ([]service.Issue, error) {
-	return a.service.ListIssues(context.Background(), filter)
+	ctx, cancel := a.defaultCallContext()
+	defer cancel()
+	return a.service.ListIssues(ctx, filter)
 }
 
 func (a *App) ImportJiraIssue(jiraKey string) (service.Issue, error) {
-	return a.service.ImportJiraIssue(context.Background(), jiraKey)
+	ctx, cancel := a.longCallContext()
+	defer cancel()
+	return a.service.ImportJiraIssue(ctx, jiraKey)
 }
 
 func (a *App) CreateIssue(issue service.Issue) (service.Issue, error) {
-	return a.service.CreateIssue(context.Background(), issue)
+	ctx, cancel := a.defaultCallContext()
+	defer cancel()
+	return a.service.CreateIssue(ctx, issue)
 }
 
 func (a *App) GetIssue(jiraKey string) (service.Issue, error) {
-	return a.service.GetIssue(context.Background(), jiraKey)
+	ctx, cancel := a.defaultCallContext()
+	defer cancel()
+	return a.service.GetIssue(ctx, jiraKey)
 }
 
 func (a *App) UpdateIssue(jiraKey string, issue service.Issue) (service.Issue, error) {
-	return a.service.UpdateIssue(context.Background(), jiraKey, issue)
+	ctx, cancel := a.defaultCallContext()
+	defer cancel()
+	return a.service.UpdateIssue(ctx, jiraKey, issue)
 }
 
 func (a *App) DeleteIssue(jiraKey string) (map[string]bool, error) {
-	return ok(a.service.DeleteIssue(context.Background(), jiraKey))
+	ctx, cancel := a.defaultCallContext()
+	defer cancel()
+	return ok(a.service.DeleteIssue(ctx, jiraKey))
 }
 
 func (a *App) GenerateIssueSummary(jiraKey string) (service.IssueSummaryResponse, error) {
-	return a.service.GenerateIssueSummary(context.Background(), jiraKey)
+	ctx, cancel := a.longCallContext()
+	defer cancel()
+	return a.service.GenerateIssueSummary(ctx, jiraKey)
 }
 
 func (a *App) ListIssueEvents(jiraKey string) ([]service.IssueEvent, error) {
-	return a.service.ListIssueEvents(context.Background(), jiraKey)
+	ctx, cancel := a.defaultCallContext()
+	defer cancel()
+	return a.service.ListIssueEvents(ctx, jiraKey)
 }
 
 func (a *App) CreateIssueEvent(jiraKey string, event service.IssueEvent) (service.IssueEvent, error) {
-	return a.service.CreateIssueEvent(context.Background(), jiraKey, event)
+	ctx, cancel := a.defaultCallContext()
+	defer cancel()
+	return a.service.CreateIssueEvent(ctx, jiraKey, event)
 }
 
 func (a *App) UpdateIssueEvent(id int64, event service.IssueEvent) (service.IssueEvent, error) {
-	return a.service.UpdateIssueEvent(context.Background(), id, event)
+	ctx, cancel := a.defaultCallContext()
+	defer cancel()
+	return a.service.UpdateIssueEvent(ctx, id, event)
 }
 
 func (a *App) DeleteIssueEvent(id int64) (map[string]bool, error) {
-	return ok(a.service.DeleteIssueEvent(context.Background(), id))
+	ctx, cancel := a.defaultCallContext()
+	defer cancel()
+	return ok(a.service.DeleteIssueEvent(ctx, id))
 }
 
 func (a *App) ListIssueTodos(jiraKey string, includeDone bool) ([]service.IssueTodo, error) {
-	return a.service.ListIssueTodos(context.Background(), jiraKey, includeDone)
+	ctx, cancel := a.defaultCallContext()
+	defer cancel()
+	return a.service.ListIssueTodos(ctx, jiraKey, includeDone)
 }
 
 func (a *App) CreateIssueTodo(jiraKey string, todo service.IssueTodo) (service.IssueTodo, error) {
-	return a.service.CreateIssueTodo(context.Background(), jiraKey, todo)
+	ctx, cancel := a.defaultCallContext()
+	defer cancel()
+	return a.service.CreateIssueTodo(ctx, jiraKey, todo)
 }
 
 func (a *App) UpdateIssueTodo(id int64, todo service.IssueTodo) (service.IssueTodo, error) {
-	return a.service.UpdateIssueTodo(context.Background(), id, todo)
+	ctx, cancel := a.defaultCallContext()
+	defer cancel()
+	return a.service.UpdateIssueTodo(ctx, id, todo)
 }
 
 func (a *App) DeleteIssueTodo(id int64) (map[string]bool, error) {
-	return ok(a.service.DeleteIssueTodo(context.Background(), id))
+	ctx, cancel := a.defaultCallContext()
+	defer cancel()
+	return ok(a.service.DeleteIssueTodo(ctx, id))
 }
 
 func (a *App) UploadImage(file FileUpload) (service.UploadedImage, error) {
@@ -173,7 +241,9 @@ func (a *App) UploadImage(file FileUpload) (service.UploadedImage, error) {
 	if err != nil {
 		return service.UploadedImage{}, err
 	}
-	return a.service.SaveUploadedImage(context.Background(), service.UploadFile{
+	ctx, cancel := a.defaultCallContext()
+	defer cancel()
+	return a.service.SaveUploadedImage(ctx, service.UploadFile{
 		Filename: file.Name,
 		Context:  file.Context,
 		Reader:   bytes.NewReader(data),
@@ -181,11 +251,15 @@ func (a *App) UploadImage(file FileUpload) (service.UploadedImage, error) {
 }
 
 func (a *App) GetUploadedImageDataURL(url string) (service.UploadedImageData, error) {
-	return a.service.UploadedImageDataURL(context.Background(), url)
+	ctx, cancel := a.defaultCallContext()
+	defer cancel()
+	return a.service.UploadedImageDataURL(ctx, url)
 }
 
 func (a *App) DeleteUploadedImage(url string) (map[string]bool, error) {
-	deleted, err := a.service.DeleteUploadedImage(context.Background(), url)
+	ctx, cancel := a.defaultCallContext()
+	defer cancel()
+	deleted, err := a.service.DeleteUploadedImage(ctx, url)
 	if err != nil {
 		return nil, err
 	}
@@ -193,83 +267,123 @@ func (a *App) DeleteUploadedImage(url string) (map[string]bool, error) {
 }
 
 func (a *App) CleanupUnusedUploadedImages() (service.UploadedImageCleanup, error) {
-	return a.service.CleanupUnusedUploadedImages(context.Background())
+	ctx, cancel := a.longCallContext()
+	defer cancel()
+	return a.service.CleanupUnusedUploadedImages(ctx)
 }
 
 func (a *App) ListTempTasks(filter service.TempTaskFilter) ([]service.TempTask, error) {
-	return a.service.ListTempTasks(context.Background(), filter)
+	ctx, cancel := a.defaultCallContext()
+	defer cancel()
+	return a.service.ListTempTasks(ctx, filter)
 }
 
 func (a *App) CreateTempTask(task service.TempTask) (service.TempTask, error) {
-	return a.service.CreateTempTask(context.Background(), task)
+	ctx, cancel := a.defaultCallContext()
+	defer cancel()
+	return a.service.CreateTempTask(ctx, task)
 }
 
 func (a *App) GetTempTask(id int64) (service.TempTask, error) {
-	return a.service.GetTempTask(context.Background(), id)
+	ctx, cancel := a.defaultCallContext()
+	defer cancel()
+	return a.service.GetTempTask(ctx, id)
 }
 
 func (a *App) UpdateTempTask(id int64, task service.TempTask) (service.TempTask, error) {
-	return a.service.UpdateTempTask(context.Background(), id, task)
+	ctx, cancel := a.defaultCallContext()
+	defer cancel()
+	return a.service.UpdateTempTask(ctx, id, task)
 }
 
 func (a *App) DeleteTempTask(id int64) (map[string]bool, error) {
-	return ok(a.service.DeleteTempTask(context.Background(), id))
+	ctx, cancel := a.defaultCallContext()
+	defer cancel()
+	return ok(a.service.DeleteTempTask(ctx, id))
 }
 
 func (a *App) ListTempTaskEvents(id int64) ([]service.TempTaskEvent, error) {
-	return a.service.ListTempTaskEvents(context.Background(), id)
+	ctx, cancel := a.defaultCallContext()
+	defer cancel()
+	return a.service.ListTempTaskEvents(ctx, id)
 }
 
 func (a *App) CreateTempTaskEvent(id int64, event service.TempTaskEvent) (service.TempTaskEvent, error) {
-	return a.service.CreateTempTaskEvent(context.Background(), id, event)
+	ctx, cancel := a.defaultCallContext()
+	defer cancel()
+	return a.service.CreateTempTaskEvent(ctx, id, event)
 }
 
 func (a *App) UpdateTempTaskEvent(id int64, event service.TempTaskEvent) (service.TempTaskEvent, error) {
-	return a.service.UpdateTempTaskEvent(context.Background(), id, event)
+	ctx, cancel := a.defaultCallContext()
+	defer cancel()
+	return a.service.UpdateTempTaskEvent(ctx, id, event)
 }
 
 func (a *App) DeleteTempTaskEvent(id int64) (map[string]bool, error) {
-	return ok(a.service.DeleteTempTaskEvent(context.Background(), id))
+	ctx, cancel := a.defaultCallContext()
+	defer cancel()
+	return ok(a.service.DeleteTempTaskEvent(ctx, id))
 }
 
 func (a *App) CreateDayEntry(entry service.DayEntry) (service.DayEntry, error) {
-	return a.service.CreateDayEntry(context.Background(), entry.Date, entry.ContentMD)
+	ctx, cancel := a.defaultCallContext()
+	defer cancel()
+	return a.service.CreateDayEntry(ctx, entry.Date, entry.ContentMD)
 }
 
 func (a *App) DeleteDayEntry(id int64) (map[string]bool, error) {
-	return ok(a.service.DeleteDayEntry(context.Background(), id))
+	ctx, cancel := a.defaultCallContext()
+	defer cancel()
+	return ok(a.service.DeleteDayEntry(ctx, id))
 }
 
 func (a *App) ListWeeks() ([]service.WeeklyLog, error) {
-	return a.service.ListWeeklyLogs(context.Background())
+	ctx, cancel := a.defaultCallContext()
+	defer cancel()
+	return a.service.ListWeeklyLogs(ctx)
 }
 
 func (a *App) GetWeekBounds() (service.WeekBounds, error) {
-	return a.service.GetWeekBounds(context.Background())
+	ctx, cancel := a.defaultCallContext()
+	defer cancel()
+	return a.service.GetWeekBounds(ctx)
 }
 
 func (a *App) GetWeek(week string) (service.WeekView, error) {
-	return a.service.GetWeekView(context.Background(), week)
+	ctx, cancel := a.defaultCallContext()
+	defer cancel()
+	return a.service.GetWeekView(ctx, week)
 }
 
 func (a *App) UpdateWeek(week string, log service.WeeklyLog) (service.WeeklyLog, error) {
-	return a.service.UpsertWeeklyLog(context.Background(), week, log)
+	ctx, cancel := a.defaultCallContext()
+	defer cancel()
+	return a.service.UpsertWeeklyLog(ctx, week, log)
 }
 
 func (a *App) GenerateWeekDraft(week string) (service.WeeklyLog, error) {
-	return a.service.GenerateWeekDraft(context.Background(), week)
+	ctx, cancel := a.defaultCallContext()
+	defer cancel()
+	return a.service.GenerateWeekDraft(ctx, week)
 }
 
 func (a *App) GenerateWeekSummary(week string) (service.WeeklyLog, error) {
-	return a.service.GenerateWeekSummary(context.Background(), week)
+	ctx, cancel := a.longCallContext()
+	defer cancel()
+	return a.service.GenerateWeekSummary(ctx, week)
 }
 
 func (a *App) Search(query string, entityType string, limit int, offset int) ([]service.SearchResult, error) {
-	return a.service.Search(context.Background(), query, entityType, limit, offset)
+	ctx, cancel := a.defaultCallContext()
+	defer cancel()
+	return a.service.Search(ctx, query, entityType, limit, offset)
 }
 
 func (a *App) ExportJSON() (SaveResult, error) {
-	data, err := a.service.ExportJSON(context.Background())
+	ctx, cancel := a.longCallContext()
+	defer cancel()
+	data, err := a.service.ExportJSON(ctx)
 	if err != nil {
 		return SaveResult{}, err
 	}
@@ -277,7 +391,9 @@ func (a *App) ExportJSON() (SaveResult, error) {
 }
 
 func (a *App) ExportMarkdownZip() (SaveResult, error) {
-	data, err := a.service.ExportMarkdownZip(context.Background())
+	ctx, cancel := a.longCallContext()
+	defer cancel()
+	data, err := a.service.ExportMarkdownZip(ctx)
 	if err != nil {
 		return SaveResult{}, err
 	}
@@ -285,7 +401,9 @@ func (a *App) ExportMarkdownZip() (SaveResult, error) {
 }
 
 func (a *App) ExportIssueMarkdown(jiraKey string) (SaveResult, error) {
-	data, filename, err := a.service.ExportIssueMarkdown(context.Background(), strings.TrimSuffix(jiraKey, ".md"))
+	ctx, cancel := a.defaultCallContext()
+	defer cancel()
+	data, filename, err := a.service.ExportIssueMarkdown(ctx, strings.TrimSuffix(jiraKey, ".md"))
 	if err != nil {
 		return SaveResult{}, err
 	}
@@ -293,7 +411,9 @@ func (a *App) ExportIssueMarkdown(jiraKey string) (SaveResult, error) {
 }
 
 func (a *App) ExportWeekMarkdown(week string) (SaveResult, error) {
-	data, filename, err := a.service.ExportWeekMarkdown(context.Background(), strings.TrimSuffix(week, ".md"))
+	ctx, cancel := a.defaultCallContext()
+	defer cancel()
+	data, filename, err := a.service.ExportWeekMarkdown(ctx, strings.TrimSuffix(week, ".md"))
 	if err != nil {
 		return SaveResult{}, err
 	}
@@ -301,7 +421,9 @@ func (a *App) ExportWeekMarkdown(week string) (SaveResult, error) {
 }
 
 func (a *App) ExportTempTaskMarkdown(id int64) (SaveResult, error) {
-	data, filename, err := a.service.ExportTempTaskMarkdown(context.Background(), id)
+	ctx, cancel := a.defaultCallContext()
+	defer cancel()
+	data, filename, err := a.service.ExportTempTaskMarkdown(ctx, id)
 	if err != nil {
 		return SaveResult{}, err
 	}
@@ -371,6 +493,9 @@ func decodeFileUpload(file FileUpload) ([]byte, error) {
 		contentType = strings.TrimPrefix(strings.TrimSuffix(meta, ";base64"), "data:")
 		encoded = value
 	}
+	if base64DecodedLen(encoded) > service.MaxImageUploadBytes {
+		return nil, badRequest("image must be 8 MB or smaller")
+	}
 	decoded, err := base64.StdEncoding.DecodeString(encoded)
 	if err != nil {
 		return nil, badRequest("invalid image data")
@@ -382,6 +507,21 @@ func decodeFileUpload(file FileUpload) ([]byte, error) {
 		return nil, badRequest("file must be an image")
 	}
 	return decoded, nil
+}
+
+func base64DecodedLen(encoded string) int {
+	encoded = strings.TrimSpace(encoded)
+	if encoded == "" {
+		return 0
+	}
+	padding := 0
+	if strings.HasSuffix(encoded, "==") {
+		padding = 2
+	} else if strings.HasSuffix(encoded, "=") {
+		padding = 1
+	}
+	groups := (len(encoded) + 3) / 4
+	return groups*3 - padding
 }
 
 func badRequest(message string) error {

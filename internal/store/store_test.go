@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"strconv"
+	"strings"
 	"testing"
 
 	_ "modernc.org/sqlite"
@@ -62,6 +63,26 @@ func TestListIssuesStatusMatchesStoredStatusOrJiraBackground(t *testing.T) {
 	}
 	if len(keys) != 2 || !keys["GCS-1"] || !keys["GCS-2"] {
 		t.Fatalf("expected stored and Jira-background In Progress issues, got %#v", issues)
+	}
+}
+
+func TestScanIssueReturnsInvalidJSONError(t *testing.T) {
+	store := newTestStore(t)
+	insertTestIssue(t, store.db, "GCS-1", "In Progress", `not-json`, "")
+
+	_, err := store.GetIssue(context.Background(), "GCS-1")
+	if err == nil || !strings.Contains(err.Error(), "decode issue.tags") {
+		t.Fatalf("expected invalid issue tags error, got %v", err)
+	}
+}
+
+func TestScanTempTaskReturnsInvalidJSONError(t *testing.T) {
+	store := newTestStore(t)
+	id := insertTestTempTaskWithTags(t, store.db, `not-json`, "bad task")
+
+	_, err := store.GetTempTask(context.Background(), id)
+	if err == nil || !strings.Contains(err.Error(), "decode temp_tasks.tags") {
+		t.Fatalf("expected invalid temp task tags error, got %v", err)
 	}
 }
 

@@ -66,7 +66,9 @@ func (a *App) GetUpdateInfo() (UpdateInfo, error) {
 	if shouldSkipUpdateCheck(AppVersion) {
 		return skippedUpdateInfo(AppVersion), nil
 	}
-	info, err := fetchUpdateInfo(context.Background())
+	ctx, cancel := a.longCallContext()
+	defer cancel()
+	info, err := fetchUpdateInfo(ctx)
 	if err != nil {
 		return UpdateInfo{CurrentVersion: normalizeVersion(AppVersion), CheckedAt: nowRFC3339()}, err
 	}
@@ -77,7 +79,9 @@ func (a *App) InstallUpdate() (UpdateInstallResult, error) {
 	if shouldSkipUpdateCheck(AppVersion) {
 		return UpdateInstallResult{Message: "开发版本不支持在线升级"}, nil
 	}
-	info, err := fetchUpdateInfo(context.Background())
+	ctx, cancel := a.longCallContext()
+	defer cancel()
+	info, err := fetchUpdateInfo(ctx)
 	if err != nil {
 		return UpdateInstallResult{}, err
 	}

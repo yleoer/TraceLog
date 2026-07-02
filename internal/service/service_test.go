@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -39,6 +40,25 @@ func TestSaveUploadedImageStoresPNG(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(dir, image.Filename)); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestWeekRangeRejectsOutOfRangeISOWeek(t *testing.T) {
+	if _, _, err := weekRange("2026-W00", time.UTC); err == nil {
+		t.Fatal("expected week 00 to be rejected")
+	}
+	if _, _, err := weekRange("2026-W54", time.UTC); err == nil {
+		t.Fatal("expected week 54 to be rejected")
+	}
+	if _, _, err := weekRange("2027-W53", time.UTC); err == nil {
+		t.Fatal("expected 2027-W53 to be rejected because 2027 has 52 ISO weeks")
+	}
+	start, end, err := weekRange("2026-W52", time.UTC)
+	if err != nil {
+		t.Fatalf("expected valid week 52, got %v", err)
+	}
+	if start != "2026-12-21T00:00:00Z" || end != "2026-12-28T00:00:00Z" {
+		t.Fatalf("unexpected 2026-W52 range: %s %s", start, end)
 	}
 }
 
@@ -140,7 +160,7 @@ func TestDeleteUploadedImageKeepsReferencedFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	svc.repo = uploadReferenceRepo{url: image.URL}
+	svc.core.repo = uploadReferenceRepo{url: image.URL}
 
 	deleted, err := svc.DeleteUploadedImage(context.Background(), image.URL)
 	if err != nil {
@@ -188,7 +208,7 @@ func TestCleanupUnusedUploadedImagesRemovesOnlyUnreferencedImages(t *testing.T) 
 	if err := os.WriteFile(filepath.Join(dir, "notes.txt"), []byte("keep me"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	svc.repo = uploadReferenceRepo{url: referenced.URL}
+	svc.core.repo = uploadReferenceRepo{url: referenced.URL}
 
 	result, err := svc.CleanupUnusedUploadedImages(context.Background())
 	if err != nil {
@@ -288,6 +308,27 @@ func TestAllowedTimeWorkItem(t *testing.T) {
 	}
 	if allowedTimeWorkItem("CORETIME-999") {
 		t.Fatal("expected unknown work item to be rejected")
+	}
+}
+
+func TestCreateIssueRollsBackWhenIndexingFails(t *testing.T) {
+	repo := &rollbackRepo{indexErr: errors.New("index failed")}
+	svc := New(repo, nil, nil)
+
+	_, err := svc.CreateIssue(context.Background(), Issue{
+		JiraKey:  "GCS-1",
+		Title:    "Test issue",
+		Status:   "analysis",
+		Priority: "medium",
+	})
+	if err == nil {
+		t.Fatal("expected create issue to fail")
+	}
+	if len(repo.issues) != 0 {
+		t.Fatalf("expected transaction rollback to remove created issue, got %#v", repo.issues)
+	}
+	if repo.createdActivities != 0 {
+		t.Fatalf("expected transaction rollback to remove activity, got %d", repo.createdActivities)
 	}
 }
 
@@ -430,6 +471,42 @@ type uploadReferenceRepo struct {
 
 func (repo uploadReferenceRepo) UploadedImageReferenced(_ context.Context, url string) (bool, error) {
 	return url == repo.url, nil
+}
+
+type rollbackRepo struct {
+	Repository
+	issues            []Issue
+	createdActivities int
+	indexErr          error
+	nextID            int64
+}
+
+func (repo *rollbackRepo) WithTransaction(ctx context.Context, fn func(Repository) error) error {
+	snapshotIssues := append([]Issue(nil), repo.issues...)
+	snapshotActivities := repo.createdActivities
+	if err := fn(repo); err != nil {
+		repo.issues = snapshotIssues
+		repo.createdActivities = snapshotActivities
+		return err
+	}
+	_ = ctx
+	return nil
+}
+
+func (repo *rollbackRepo) CreateIssue(_ context.Context, issue Issue) (Issue, error) {
+	repo.nextID++
+	issue.ID = repo.nextID
+	repo.issues = append(repo.issues, issue)
+	return issue, nil
+}
+
+func (repo *rollbackRepo) CreateActivityEvent(_ context.Context, event DayComment) error {
+	repo.createdActivities++
+	return nil
+}
+
+func (repo *rollbackRepo) UpsertSearchIndex(_ context.Context, entityType string, entityID string, title string, body string, updatedAt string) error {
+	return repo.indexErr
 }
 
 var testPNG = []byte{
