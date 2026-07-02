@@ -193,12 +193,24 @@ jobs:
           path: release-assets
           merge-multiple: true
 
+      - name: Checkout release notes
+        uses: actions/checkout@v6
+
       - name: Publish release assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
           TAG_NAME: ${{ github.ref_name }}
         run: |
-          gh release view "$TAG_NAME" >/dev/null 2>&1 || \
-            gh release create "$TAG_NAME" --title "$TAG_NAME" --generate-notes
+          notes_file="release-notes/${TAG_NAME}.md"
+          if [ -f "$notes_file" ]; then
+            if gh release view "$TAG_NAME" >/dev/null 2>&1; then
+              gh release edit "$TAG_NAME" --title "$TAG_NAME" --notes-file "$notes_file"
+            else
+              gh release create "$TAG_NAME" --title "$TAG_NAME" --notes-file "$notes_file"
+            fi
+          else
+            gh release view "$TAG_NAME" >/dev/null 2>&1 || \
+              gh release create "$TAG_NAME" --title "$TAG_NAME" --generate-notes
+          fi
           gh release upload "$TAG_NAME" release-assets/* --clobber

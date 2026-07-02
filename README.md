@@ -61,6 +61,14 @@ git tag v0.1.0
 git push origin v0.1.0
 ```
 
+如需自定义 GitHub Release 文案，先在 `release-notes/` 下创建同名 Markdown 文件，例如 `release-notes/v0.1.0.md`。workflow 会优先使用该文件；如果文件不存在，则回退到 GitHub 自动生成的 release notes。
+
+如需用仓库中的文案更新历史 GitHub Release，确认 `gh` 已登录后执行：
+
+```powershell
+Get-ChildItem release-notes/*.md | ForEach-Object { gh release edit $_.BaseName --notes-file $_.FullName }
+```
+
 workflow 会从根目录构建 Wails 应用并上传：
 
 - Windows amd64 NSIS 安装器：`.exe`
