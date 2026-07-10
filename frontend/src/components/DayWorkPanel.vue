@@ -187,12 +187,12 @@ type MarkdownEditorExpose = {
 }
 
 .ref-chip.issue {
-  background: #eff6ff;
-  color: #2563eb;
+  background: rgba(var(--accent-rgb), 0.08);
+  color: var(--accent);
 }
 
 .ref-chip.issue:hover {
-  background: #dbeafe;
+  background: rgba(var(--accent-rgb), 0.13);
 }
 
 .ref-chip.temp_task {
@@ -241,8 +241,8 @@ type MarkdownEditorExpose = {
 }
 
 .event-chip.todo_done {
-  background: #eff6ff;
-  color: #2563eb;
+  background: rgba(var(--accent-rgb), 0.08);
+  color: var(--accent);
 }
 
 .entry-editor {

@@ -1,9 +1,10 @@
 <template>
   <div class="space-y-6">
-    <div class="flex items-center justify-between">
+    <div class="page-header">
       <div>
-        <h1 class="text-xl font-semibold text-gray-900">今日工作流</h1>
-        <p class="text-sm text-gray-500 mt-0.5">{{ data?.date ?? '' }}</p>
+        <div class="page-kicker">Daily focus</div>
+        <h1>今日工作流</h1>
+        <p class="page-subtitle">{{ data?.date ?? '' }} · 聚焦今天真正发生的工作。</p>
       </div>
       <n-button size="small" @click="load">刷新</n-button>
     </div>

@@ -1,8 +1,8 @@
 <template>
   <div class="space-y-5 max-w-4xl mx-auto">
-    <div class="flex items-center justify-between">
+    <div class="page-header">
       <div>
-        <p class="text-xs text-gray-400 uppercase tracking-wide">{{ isNew ? '新增工作记录' : '工作记录' }}</p>
+        <p class="page-kicker">{{ isNew ? 'New work item' : 'Work item detail' }}</p>
         <h1 class="text-2xl font-bold text-gray-900 mt-0.5">{{ form.jira_key || 'GCS-' }}</h1>
       </div>
       <div class="flex items-center gap-2">

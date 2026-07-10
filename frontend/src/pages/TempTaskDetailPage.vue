@@ -1,8 +1,11 @@
 <template>
   <n-spin :show="loading">
     <div class="space-y-6 max-w-4xl mx-auto">
-      <div class="flex items-center justify-between">
-        <h1 class="text-xl font-semibold text-gray-900">{{ isNew ? '新增临时需求' : form.title }}</h1>
+      <div class="page-header">
+        <div>
+          <div class="page-kicker">{{ isNew ? 'New quick request' : 'Quick request detail' }}</div>
+          <h1>{{ isNew ? '新增临时需求' : form.title }}</h1>
+        </div>
         <div class="flex items-center gap-2">
           <n-button v-if="!isNew" size="small" @click="downloadUrl(`/export/temp-tasks/${form.id}.md`)">导出</n-button>
           <n-popconfirm v-if="!isNew" @positive-click="removeTask">

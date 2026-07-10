@@ -1,11 +1,15 @@
 <template>
-  <div class="space-y-5">
-    <div class="flex items-center justify-between">
-      <h1 class="text-xl font-semibold text-gray-900">Issues</h1>
+  <div class="issue-list-page space-y-5">
+    <div class="page-header">
+      <div>
+        <div class="page-kicker">Work items</div>
+        <h1>Issues</h1>
+        <p class="page-subtitle">集中查看、检索并跟进所有工作记录。</p>
+      </div>
       <n-button type="primary" size="small" @click="$router.push('/issues/new')">新增 Issue</n-button>
     </div>
 
-    <div class="flex flex-wrap items-center gap-2">
+    <div class="filter-bar">
       <n-input v-model:value="query" placeholder="搜索编号、简述、评论" clearable size="small" class="!w-56" @keyup.enter="applyFilters" />
       <n-select
         :value="status || null"
@@ -36,11 +40,11 @@
       <n-tag size="small" closable @close="clearTag">{{ activeTag }}</n-tag>
     </div>
 
-    <div class="bg-white border border-gray-200 rounded-lg overflow-hidden">
+    <div class="table-shell">
       <n-data-table :loading="loading" :columns="columns" :data="issues" :row-key="issueRowKey" size="small" :bordered="false" />
     </div>
 
-    <div class="flex items-center justify-between text-sm text-gray-500">
+    <div class="pagination-bar flex items-center justify-between text-sm text-gray-500">
       <span>第 {{ page }} 页，当前 {{ issues.length }} 条</span>
       <div class="flex items-center gap-2">
         <n-button size="small" :disabled="page <= 1 || loading" @click="goPage(page - 1)">上一页</n-button>
@@ -292,26 +296,26 @@ watch(
 
 <style scoped>
 .issue-key {
-  color: #2563eb;
+  color: var(--accent);
   font-weight: 600;
   font-size: 12px;
   padding: 2px 6px;
-  background: #eff6ff;
+  background: rgba(var(--accent-rgb), 0.08);
   border-radius: 4px;
 }
 
 .issue-key:hover {
-  background: #dbeafe;
+  background: rgba(var(--accent-rgb), 0.13);
 }
 
 .ext-link {
-  color: #0f766e;
+  color: var(--accent);
   font-size: 12px;
   overflow-wrap: anywhere;
 }
 
 .ext-link:hover {
-  color: #115e59;
+  color: var(--accent-hover);
   text-decoration: underline;
 }
 </style>

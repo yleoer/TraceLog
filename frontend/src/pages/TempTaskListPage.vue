@@ -1,21 +1,25 @@
 <template>
-  <div class="space-y-5">
-    <div class="flex items-center justify-between">
-      <h1 class="text-xl font-semibold text-gray-900">临时需求</h1>
+  <div class="temp-task-list-page space-y-5">
+    <div class="page-header">
+      <div>
+        <div class="page-kicker">Quick requests</div>
+        <h1>临时需求</h1>
+        <p class="page-subtitle">捕捉计划外工作，并保持每一个请求可追踪。</p>
+      </div>
       <n-button type="primary" size="small" @click="$router.push('/temp-tasks/new')">新增临时需求</n-button>
     </div>
 
-    <div class="flex flex-wrap items-center gap-2">
+    <div class="filter-bar">
       <n-input v-model:value="query" placeholder="搜索标题、来源、内容" clearable size="small" class="!w-56" @keyup.enter="applyFilters" />
       <n-select :value="status" placeholder="状态" clearable size="small" :options="statusOptions" class="!w-32" @update:value="onStatusChange" />
       <n-button size="small" @click="applyFilters">搜索</n-button>
     </div>
 
-    <div class="bg-white border border-gray-200 rounded-lg overflow-hidden">
+    <div class="table-shell">
       <n-data-table :loading="loading" :columns="columns" :data="tasks" :row-key="taskRowKey" size="small" :bordered="false" />
     </div>
 
-    <div class="flex items-center justify-between text-sm text-gray-500">
+    <div class="pagination-bar flex items-center justify-between text-sm text-gray-500">
       <span>第 {{ page }} 页，当前 {{ tasks.length }} 条</span>
       <div class="flex items-center gap-2">
         <n-button size="small" :disabled="page <= 1 || loading" @click="goPage(page - 1)">上一页</n-button>
@@ -158,7 +162,7 @@ watch(
 
 <style scoped>
 .task-link {
-  color: #2563eb;
+  color: var(--accent);
   font-weight: 600;
   font-size: 13px;
 }

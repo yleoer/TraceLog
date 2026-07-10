@@ -1,11 +1,12 @@
 <template>
   <div class="time-log-page space-y-5 max-w-6xl mx-auto">
-    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+    <div class="page-header">
       <div>
-        <h1 class="text-xl font-semibold text-gray-900">Time</h1>
-        <p class="text-sm text-gray-500 mt-0.5">{{ weekTitle }}</p>
+        <div class="page-kicker">Tempo worklog</div>
+        <h1>Time</h1>
+        <p class="page-subtitle">{{ weekTitle }}</p>
       </div>
-      <div class="flex items-center gap-2">
+      <div class="page-toolbar">
         <n-button size="small" @click="shiftWeek(-1)">上周</n-button>
         <n-button size="small" @click="goCurrentWeek">本周</n-button>
         <n-button size="small" @click="shiftWeek(1)">下周</n-button>
@@ -417,13 +418,13 @@ onMounted(loadWeek)
 }
 
 .day-card.weekend {
-  border-color: #dbeafe;
-  box-shadow: inset 3px 0 0 #dbeafe;
+  border-color: rgba(var(--accent-rgb), 0.18);
+  box-shadow: inset 3px 0 0 rgba(var(--accent-rgb), 0.2);
 }
 
 .day-card.weekend .day-head h2,
 .day-card.weekend .day-head strong {
-  color: #3b82f6;
+  color: var(--accent);
 }
 
 .day-head {
@@ -449,7 +450,7 @@ onMounted(loadWeek)
 }
 
 .day-head strong {
-  color: #2563eb;
+  color: var(--accent);
   font-size: 14px;
 }
 
@@ -482,7 +483,7 @@ onMounted(loadWeek)
 }
 
 .time-range {
-  color: #2563eb;
+  color: var(--accent);
   font-size: 12px;
   font-weight: 700;
 }

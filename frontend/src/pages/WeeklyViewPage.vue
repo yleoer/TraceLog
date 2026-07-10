@@ -1,8 +1,12 @@
 <template>
   <div class="space-y-5">
-    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-      <h1 class="text-xl font-bold text-gray-900">周视图</h1>
-      <div class="flex flex-wrap items-center gap-2">
+    <div class="page-header">
+      <div>
+        <div class="page-kicker">Weekly review</div>
+        <h1>周视图</h1>
+        <p class="page-subtitle">汇总每周轨迹，沉淀成果与下一步计划。</p>
+      </div>
+      <div class="page-toolbar">
         <n-button size="small" :disabled="!canGoPrevious" @click="shiftWeek(-1)">上一周</n-button>
         <n-select
           v-model:value="week"

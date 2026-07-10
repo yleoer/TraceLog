@@ -1,8 +1,43 @@
 <template>
   <div class="space-y-5 max-w-3xl mx-auto">
-    <div class="flex items-center justify-between">
-      <h1 class="text-xl font-bold text-gray-900">设置 / 导出</h1>
+    <div class="page-header">
+      <div>
+        <div class="page-kicker">Preferences</div>
+        <h1>设置与导出</h1>
+        <p class="page-subtitle">管理服务连接、智能能力与本地数据。</p>
+      </div>
       <n-button type="primary" size="small" :loading="saving" @click="saveSettings">保存设置</n-button>
+    </div>
+
+    <div class="card theme-settings-card">
+      <div class="theme-settings-head">
+        <div>
+          <h2 class="card-title mb-1">界面主题</h2>
+          <p class="text-xs text-gray-400">主题会即时应用，并在下次启动时自动恢复。</p>
+        </div>
+        <span class="current-theme-badge">当前 · {{ activeTheme.label }}</span>
+      </div>
+      <div class="theme-choice-grid">
+        <button
+          v-for="theme in themes"
+          :key="theme.key"
+          type="button"
+          class="theme-choice"
+          :class="{ active: selectedThemeKey === theme.key }"
+          :style="{ '--choice-color': theme.primary, '--choice-highlight': theme.highlight, '--choice-rgb': theme.rgb }"
+          @click="setTheme(theme.key)"
+        >
+          <span class="theme-choice-preview">
+            <i /><i /><i />
+          </span>
+          <span class="theme-choice-copy">
+            <strong>{{ theme.label }}</strong>
+            <small>{{ theme.description }}</small>
+            <code>{{ theme.primary }}</code>
+          </span>
+          <span v-if="selectedThemeKey === theme.key" class="theme-selected"><Check :size="13" /></span>
+        </button>
+      </div>
     </div>
 
     <div class="card">
@@ -27,7 +62,7 @@
           >
             升级
           </n-button>
-          <a v-if="updateInfo?.release_url" href="#" class="text-xs text-blue-600 hover:text-blue-700" @click.prevent="openExternalURL(updateInfo.release_url)">Release</a>
+          <a v-if="updateInfo?.release_url" href="#" class="theme-link text-xs" @click.prevent="openExternalURL(updateInfo.release_url)">Release</a>
         </div>
       </div>
       <p class="text-xs mt-3" :class="updateStatusClass">{{ updateStatusText }}</p>
@@ -146,9 +181,11 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { NButton, NFormItem, NInput, NPopconfirm, NRadioButton, NRadioGroup, useDialog, useMessage } from 'naive-ui'
+import { Check } from 'lucide-vue-next'
 import { api, downloadUrl } from '../api/client'
 import type { AppSettings, UpdateInfo } from '../types'
 import { openExternalURL } from '../utils/openExternal'
+import { useWorkTheme } from '../composables/useWorkTheme'
 
 const message = useMessage()
 const dialog = useDialog()
@@ -157,6 +194,7 @@ const cleaningImages = ref(false)
 const checkingUpdate = ref(false)
 const installingUpdate = ref(false)
 const updateInfo = ref<UpdateInfo | null>(null)
+const { themes, selectedThemeKey, activeTheme, setTheme } = useWorkTheme()
 const updateCacheKey = 'tracelog:update-info:v1'
 const updateAutoCheckIntervalMs = 12 * 60 * 60 * 1000
 
@@ -182,7 +220,7 @@ const updateStatusText = computed(() => {
   return '当前已是最新版本。'
 })
 
-const updateStatusClass = computed(() => updateInfo.value?.has_update ? 'text-blue-600' : 'text-gray-400')
+const updateStatusClass = computed(() => updateInfo.value?.has_update ? 'text-theme-accent' : 'text-gray-400')
 
 async function loadSettings() {
   try {
@@ -340,5 +378,181 @@ onMounted(async () => {
   border: 1px solid #e5e7eb;
   border-radius: 8px;
   padding: 14px;
+}
+
+.theme-link {
+  color: var(--accent);
+  font-weight: 620;
+  transition: color 0.18s ease;
+}
+
+.theme-link:hover {
+  color: var(--accent-hover);
+}
+
+.theme-settings-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.current-theme-badge {
+  padding: 5px 9px;
+  border: 1px solid rgba(var(--accent-rgb), 0.12);
+  border-radius: 999px;
+  color: var(--accent);
+  background: rgba(var(--accent-rgb), 0.07);
+  font-size: 9px;
+  font-weight: 680;
+  white-space: nowrap;
+}
+
+.theme-choice-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.theme-choice {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  overflow: hidden;
+  border: 1px solid rgba(82, 96, 119, 0.09);
+  border-radius: 15px;
+  text-align: left;
+  background: rgba(247, 249, 252, 0.56);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+  transition: border-color 0.22s ease, box-shadow 0.22s ease, background 0.22s ease, transform 0.22s ease;
+}
+
+.theme-choice:hover {
+  border-color: rgba(var(--choice-rgb), 0.22);
+  background: rgba(255, 255, 255, 0.76);
+  box-shadow: 0 9px 22px rgba(var(--choice-rgb), 0.09), inset 0 1px 0 white;
+  transform: translateY(-2px);
+}
+
+.theme-choice.active {
+  border-color: rgba(var(--choice-rgb), 0.32);
+  background: rgba(var(--choice-rgb), 0.065);
+  box-shadow: 0 10px 24px rgba(var(--choice-rgb), 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.88);
+}
+
+.theme-choice-preview {
+  position: relative;
+  display: flex;
+  width: 52px;
+  height: 43px;
+  flex: 0 0 52px;
+  align-items: flex-end;
+  gap: 3px;
+  padding: 8px;
+  overflow: hidden;
+  border: 2px solid rgba(255, 255, 255, 0.82);
+  border-radius: 12px;
+  background: linear-gradient(145deg, var(--choice-highlight), var(--choice-color));
+  box-shadow: 0 7px 16px rgba(var(--choice-rgb), 0.2);
+}
+
+.theme-choice-preview::before {
+  position: absolute;
+  width: 29px;
+  height: 29px;
+  top: -13px;
+  right: -8px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.24);
+  content: '';
+}
+
+.theme-choice-preview i {
+  width: 5px;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.theme-choice-preview i:nth-child(1) { height: 10px; opacity: 0.68; }
+.theme-choice-preview i:nth-child(2) { height: 17px; opacity: 0.84; }
+.theme-choice-preview i:nth-child(3) { height: 23px; }
+
+.theme-choice-copy {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.theme-choice-copy strong {
+  color: #3d495d;
+  font-size: 11px;
+  font-weight: 680;
+}
+
+.theme-choice-copy small {
+  margin-top: 2px;
+  overflow: hidden;
+  color: #9099a9;
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.theme-choice-copy code {
+  margin-top: 5px;
+  color: var(--choice-color);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 8px;
+  font-weight: 700;
+}
+
+.theme-selected {
+  display: grid;
+  width: 21px;
+  height: 21px;
+  flex: 0 0 21px;
+  place-items: center;
+  border-radius: 50%;
+  color: white;
+  background: var(--choice-color);
+  box-shadow: 0 4px 10px rgba(var(--choice-rgb), 0.22);
+}
+
+@media (max-width: 720px) {
+  .theme-choice-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.theme-choice {
+  border-color: #e3e7ed;
+  border-radius: 11px;
+  background: #f8f9fb;
+  box-shadow: none;
+}
+
+.theme-choice:hover,
+.theme-choice.active {
+  box-shadow: none;
+  transform: none;
+}
+
+.theme-choice-preview {
+  width: 46px;
+  height: 38px;
+  flex-basis: 46px;
+  border-width: 1px;
+  border-radius: 9px;
+  background: var(--choice-color);
+  box-shadow: none;
+}
+
+.theme-selected {
+  box-shadow: none;
 }
 </style>

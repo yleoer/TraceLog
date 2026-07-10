@@ -28,6 +28,7 @@ func main() {
 		Height:    860,
 		MinWidth:  960,
 		MinHeight: 680,
+		Frameless: true,
 		AssetServer: &assetserver.Options{
 			Assets:  assets,
 			Handler: assetFallbackHandler(desktop.UploadHandler(filepath.Join(cfg.DataDir, "uploads")), assets),
