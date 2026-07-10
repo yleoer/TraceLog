@@ -17,7 +17,7 @@
   --color-accent-hover: var(--accent-hover);
   --color-accent-subtle: var(--accent-soft);
 
-  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-sans: var(--font-ui);
 
   --text-2xs: 11px;
   --text-2xs--line-height: 16px;
@@ -43,6 +43,7 @@
 }
 
 :root {
+  --font-ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Helvetica Neue", "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
   --accent: #416c9b;
   --accent-hover: #365e89;
   --accent-pressed: #2d5075;
@@ -52,8 +53,10 @@
   --accent-rgb: 65, 108, 155;
   color: #172033;
   background: #eef3fa;
-  font-family: Inter, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+  font-family: var(--font-ui);
   font-size: 14px;
+  font-kerning: normal;
+  font-optical-sizing: auto;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;

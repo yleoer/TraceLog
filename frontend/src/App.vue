@@ -43,7 +43,7 @@ const themeOverrides = computed<GlobalThemeOverrides>(() => {
     boxShadow1: '0 12px 34px rgba(50, 69, 98, 0.12)',
     boxShadow2: '0 20px 60px rgba(43, 61, 88, 0.16)',
     boxShadow3: '0 28px 80px rgba(37, 54, 80, 0.2)',
-    fontFamily: "Inter, -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', sans-serif",
+    fontFamily: 'var(--font-ui)',
     fontWeightStrong: '650'
   },
   Button: {
