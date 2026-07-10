@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
@@ -34,6 +35,10 @@ type App struct {
 	database   *sql.DB
 	service    *service.Service
 	uploadDir  string
+
+	updateMu           sync.RWMutex
+	cachedUpdateInfo   UpdateInfo
+	updateInfoCachedAt time.Time
 }
 
 type FileUpload struct {

@@ -293,7 +293,7 @@ async function startInstallUpdate() {
   try {
     const result = await api.installUpdate()
     if (result.message) {
-      const type = result.will_quit ? 'warning' : 'success'
+      const type = !result.started ? 'error' : result.will_quit ? 'warning' : 'success'
       message[type](result.message)
     }
   } catch (error) {

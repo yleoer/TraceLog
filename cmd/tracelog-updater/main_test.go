@@ -4,6 +4,8 @@ import (
 	"context"
 	"io"
 	"log"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -25,10 +27,26 @@ func TestRunRequiresAppExecutable(t *testing.T) {
 
 func TestWaitForProcessExitWithoutPID(t *testing.T) {
 	start := time.Now()
-	if err := waitForProcessExit(0, time.Second); err != nil {
+	if err := waitForProcessExit(0, time.Second, log.New(io.Discard, "", 0)); err != nil {
 		t.Fatal(err)
 	}
 	if time.Since(start) > 3*time.Second {
 		t.Fatal("wait without pid took too long")
+	}
+}
+
+func TestNewLoggerPersistsHelperSession(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "logs", "update.log")
+	logger, closeLog := newLogger(path, "update-session")
+	logger.Print("helper diagnostic")
+	closeLog()
+
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(content)
+	if !strings.Contains(text, "[update-session] [helper]") || !strings.Contains(text, "helper diagnostic") {
+		t.Fatalf("unexpected helper log content: %q", text)
 	}
 }

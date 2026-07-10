@@ -1,10 +1,16 @@
 package updater
 
 import (
+	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"log"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -67,5 +73,47 @@ func TestVerifyAssetDigestRejectsMismatch(t *testing.T) {
 	other := sha256.Sum256([]byte("other"))
 	if err := VerifyAssetDigest("sha256:"+hex.EncodeToString(other[:]), hash[:]); err == nil {
 		t.Fatal("expected digest mismatch error")
+	}
+}
+
+func TestDownloadAssetLogsTransferAndDigest(t *testing.T) {
+	content := []byte("installer")
+	hash := sha256.Sum256(content)
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		response.Header().Set("Content-Type", "application/octet-stream")
+		_, _ = response.Write(content)
+	}))
+	defer server.Close()
+
+	tempDir := t.TempDir()
+	t.Setenv("TEMP", tempDir)
+	t.Setenv("TMP", tempDir)
+	t.Setenv("TMPDIR", tempDir)
+	var output bytes.Buffer
+	logger := log.New(&output, "", 0)
+
+	path, err := DownloadAsset(context.Background(), AssetInfo{
+		CurrentVersion: "v0.1.6",
+		AssetName:      "TraceLog-v0.1.7-windows-amd64-installer.exe",
+		AssetURL:       server.URL,
+		AssetDigest:    "sha256:" + hex.EncodeToString(hash[:]),
+	}, logger)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(path)
+
+	downloaded, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(downloaded, content) {
+		t.Fatalf("unexpected downloaded content: %q", downloaded)
+	}
+	logs := output.String()
+	for _, want := range []string{"download request started", "download response received", "download stream completed", "asset digest verification completed", "installer finalized"} {
+		if !strings.Contains(logs, want) {
+			t.Fatalf("expected log %q in %q", want, logs)
+		}
 	}
 }

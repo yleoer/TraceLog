@@ -1,8 +1,12 @@
 package desktop
 
 import (
+	"os"
+	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
+	"time"
 )
 
 func TestCompareVersions(t *testing.T) {
@@ -88,5 +92,86 @@ func TestSelectReleaseAssetForCurrentPlatform(t *testing.T) {
 		if asset.BrowserDownloadURL != "linux" {
 			t.Fatalf("expected linux asset, got %#v", asset)
 		}
+	}
+}
+
+func TestCachedUpdateInfoForInstall(t *testing.T) {
+	originalVersion := AppVersion
+	AppVersion = "v0.1.5"
+	t.Cleanup(func() { AppVersion = originalVersion })
+
+	app := &App{}
+	info := UpdateInfo{
+		CurrentVersion: "v0.1.5",
+		LatestVersion:  "v0.1.6",
+		HasUpdate:      true,
+		AssetURL:       "https://example.com/update.exe",
+	}
+	app.cacheUpdateInfo(info)
+
+	got, ok := app.cachedUpdateInfoForInstall()
+	if !ok {
+		t.Fatal("expected recently checked update info to be reused")
+	}
+	if got.AssetURL != info.AssetURL {
+		t.Fatalf("expected asset URL %q, got %q", info.AssetURL, got.AssetURL)
+	}
+}
+
+func TestCachedUpdateInfoForInstallRejectsExpiredInfo(t *testing.T) {
+	app := &App{
+		cachedUpdateInfo:   UpdateInfo{CurrentVersion: normalizeVersion(AppVersion), LatestVersion: "v9.9.9"},
+		updateInfoCachedAt: time.Now().Add(-updateInfoCacheTTL - time.Second),
+	}
+
+	if _, ok := app.cachedUpdateInfoForInstall(); ok {
+		t.Fatal("expected expired update info to be rejected")
+	}
+}
+
+func TestPrepareUpdateHelperUsesUniqueTemporaryFiles(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("Windows updater helper is only copied on Windows")
+	}
+	source := filepath.Join(t.TempDir(), "TraceLogUpdater.exe")
+	if err := os.WriteFile(source, []byte("updater"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	first, err := prepareUpdateHelper(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(first)
+	second, err := prepareUpdateHelper(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(second)
+
+	if first == second {
+		t.Fatalf("expected unique helper paths, got %q", first)
+	}
+	if !strings.HasSuffix(strings.ToLower(first), ".exe") || !strings.HasSuffix(strings.ToLower(second), ".exe") {
+		t.Fatalf("expected executable helper paths, got %q and %q", first, second)
+	}
+}
+
+func TestOpenDesktopUpdateLoggerPersistsSession(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "logs", "update.log")
+	logger, closeLog, err := openDesktopUpdateLogger(path, "update-session")
+	if err != nil {
+		t.Fatal(err)
+	}
+	logger.Print("desktop diagnostic")
+	closeLog()
+
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(content)
+	if !strings.Contains(text, "[update-session] [desktop]") || !strings.Contains(text, "desktop diagnostic") {
+		t.Fatalf("unexpected desktop log content: %q", text)
 	}
 }
