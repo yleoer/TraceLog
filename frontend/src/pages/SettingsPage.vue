@@ -1,5 +1,5 @@
 <template>
-  <div class="space-y-5 max-w-3xl mx-auto">
+  <div class="space-y-5">
     <div class="page-header">
       <div>
         <div class="page-kicker">Preferences</div>

@@ -1,5 +1,5 @@
 <template>
-  <div class="time-log-page space-y-5 max-w-6xl mx-auto">
+  <div class="time-log-page space-y-5">
     <div class="page-header">
       <div>
         <div class="page-kicker">Tempo worklog</div>
