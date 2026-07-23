@@ -11,10 +11,10 @@ import (
 	"time"
 )
 
-func TestRunRequiresAsset(t *testing.T) {
+func TestRunRequiresInstallerPathOrAsset(t *testing.T) {
 	err := run(context.Background(), options{appExe: "TraceLog.exe"}, log.New(io.Discard, "", 0))
-	if err == nil || !strings.Contains(err.Error(), "missing update asset") {
-		t.Fatalf("expected missing asset error, got %v", err)
+	if err == nil || !strings.Contains(err.Error(), "missing installer path or update asset") {
+		t.Fatalf("expected missing installer error, got %v", err)
 	}
 }
 

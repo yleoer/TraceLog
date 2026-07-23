@@ -22,6 +22,7 @@ const (
 )
 
 type options struct {
+	installerPath  string
 	assetURL       string
 	assetName      string
 	assetDigest    string
@@ -47,6 +48,7 @@ func main() {
 
 func parseOptions() options {
 	var opts options
+	flag.StringVar(&opts.installerPath, "installer-path", "", "verified installer path")
 	flag.StringVar(&opts.assetURL, "asset-url", "", "release asset download URL")
 	flag.StringVar(&opts.assetName, "asset-name", "", "release asset filename")
 	flag.StringVar(&opts.assetDigest, "asset-digest", "", "release asset digest")
@@ -63,25 +65,35 @@ func parseOptions() options {
 }
 
 func run(ctx context.Context, opts options, logger *log.Logger) error {
-	if opts.assetURL == "" || opts.assetName == "" {
-		return fmt.Errorf("missing update asset")
-	}
 	if opts.appExe == "" {
 		return fmt.Errorf("missing app executable path")
 	}
-	logger.Printf("updater started helper_pid=%d platform=%s/%s app=%q app_pid=%d current_version=%q asset=%q digest=%q url=%q", os.Getpid(), runtime.GOOS, runtime.GOARCH, opts.appExe, opts.appPID, opts.currentVersion, opts.assetName, opts.assetDigest, opts.assetURL)
+	logger.Printf("updater started helper_pid=%d platform=%s/%s app=%q app_pid=%d installer=%q", os.Getpid(), runtime.GOOS, runtime.GOARCH, opts.appExe, opts.appPID, opts.installerPath)
 
-	logger.Printf("download phase started")
-	path, err := updater.DownloadAsset(ctx, updater.AssetInfo{
-		CurrentVersion: opts.currentVersion,
-		AssetName:      opts.assetName,
-		AssetURL:       opts.assetURL,
-		AssetDigest:    opts.assetDigest,
-	}, logger)
-	if err != nil {
-		return err
+	path := strings.TrimSpace(opts.installerPath)
+	if path == "" {
+		if opts.assetURL == "" || opts.assetName == "" {
+			return fmt.Errorf("missing installer path or update asset")
+		}
+		logger.Printf("download phase started")
+		var err error
+		path, err = updater.DownloadAsset(ctx, updater.AssetInfo{
+			CurrentVersion: opts.currentVersion,
+			AssetName:      opts.assetName,
+			AssetURL:       opts.assetURL,
+			AssetDigest:    opts.assetDigest,
+		}, logger)
+		if err != nil {
+			return err
+		}
+		logger.Printf("download phase completed installer=%q", path)
+	} else if info, err := os.Stat(path); err != nil {
+		return fmt.Errorf("installer unavailable: %w", err)
+	} else if info.IsDir() {
+		return fmt.Errorf("installer path is a directory: %s", path)
+	} else {
+		logger.Printf("using verified installer path=%q size=%d", path, info.Size())
 	}
-	logger.Printf("download phase completed installer=%q", path)
 
 	if err := waitForProcessExit(opts.appPID, defaultWaitTimeout, logger); err != nil {
 		return err
@@ -117,8 +129,7 @@ func runInstaller(ctx context.Context, path string, logger *log.Logger) error {
 	var command *exec.Cmd
 	switch runtime.GOOS {
 	case "windows":
-		script := "$process = Start-Process -FilePath $args[0] -Wait -PassThru; if ($null -ne $process.ExitCode) { Write-Output ('installer_exit_code=' + $process.ExitCode); exit $process.ExitCode }"
-		command = exec.CommandContext(ctx, "powershell", "-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-ExecutionPolicy", "Bypass", "-Command", script, path)
+		command = exec.CommandContext(ctx, path)
 	case "darwin":
 		command = exec.CommandContext(ctx, "open", path)
 	case "linux":
@@ -147,8 +158,8 @@ func cleanupSelf(logger *log.Logger) {
 		return
 	}
 	logger.Printf("helper self-cleanup scheduling path=%q", path)
-	script := "Start-Sleep -Seconds 3; Remove-Item -LiteralPath $args[0] -Force -ErrorAction SilentlyContinue"
-	command := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-ExecutionPolicy", "Bypass", "-Command", script, path)
+	script := fmt.Sprintf("Start-Sleep -Seconds 3; Remove-Item -LiteralPath '%s' -Force -ErrorAction SilentlyContinue", strings.ReplaceAll(path, "'", "''"))
+	command := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-ExecutionPolicy", "Bypass", "-Command", script)
 	if err := command.Start(); err != nil {
 		logger.Printf("cleanup self failed: %v", err)
 		return
@@ -181,7 +192,7 @@ func waitForProcessExit(pid int, timeout time.Duration, logger *log.Logger) erro
 	}
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
-		running, err := windowsProcessRunning(pid)
+		running, err := processRunning(pid)
 		if err != nil {
 			logger.Printf("wait for app exit process query failed pid=%d error=%v", pid, err)
 			return err
@@ -194,18 +205,6 @@ func waitForProcessExit(pid int, timeout time.Duration, logger *log.Logger) erro
 	}
 	logger.Printf("wait for app exit timed out pid=%d duration=%s", pid, time.Since(startedAt))
 	return fmt.Errorf("TraceLog 仍在运行，请关闭后重试")
-}
-
-func windowsProcessRunning(pid int) (bool, error) {
-	command := exec.Command("powershell", "-NoProfile", "-Command", "if (Get-Process -Id $args[0] -ErrorAction SilentlyContinue) { exit 0 } else { exit 1 }", fmt.Sprint(pid))
-	err := command.Run()
-	if err == nil {
-		return true, nil
-	}
-	if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 1 {
-		return false, nil
-	}
-	return false, err
 }
 
 func newLogger(path string, sessionID string) (*log.Logger, func()) {

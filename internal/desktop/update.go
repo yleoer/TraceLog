@@ -17,11 +17,13 @@ import (
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"tracelog/internal/updatelog"
+	"tracelog/internal/updater"
 )
 
 const (
 	githubLatestReleaseURL     = "https://api.github.com/repos/yleoer/TraceLog/releases/latest"
 	updateHTTPTimeout          = 60 * time.Second
+	updateDownloadTimeout      = 10 * time.Minute
 	updateInstallerLaunchDelay = 500 * time.Millisecond
 	updateInfoCacheTTL         = 15 * time.Minute
 	devUpdateMessage           = "开发版本不检查更新"
@@ -126,16 +128,31 @@ func (a *App) InstallUpdate() (UpdateInstallResult, error) {
 		return UpdateInstallResult{Path: logPath, Message: "当前平台没有可用安装包，请从 Release 页面手动下载"}, nil
 	}
 
-	helperLogPath, err := startUpdateHelper(info, logPath, sessionID, logger)
+	logger.Printf("desktop download phase started asset=%q", info.AssetName)
+	downloadCtx, cancel := a.callContext(updateDownloadTimeout)
+	defer cancel()
+	installerPath, err := updater.DownloadAsset(downloadCtx, updater.AssetInfo{
+		CurrentVersion: info.CurrentVersion,
+		AssetName:      info.AssetName,
+		AssetURL:       info.AssetURL,
+		AssetDigest:    info.AssetDigest,
+	}, logger)
+	if err != nil {
+		logger.Printf("desktop download phase failed: %v", err)
+		return updateInstallFailure("下载安装包失败", err, logPath), nil
+	}
+	logger.Printf("desktop download phase completed installer=%q", installerPath)
+
+	helperLogPath, err := startUpdateHelper(installerPath, logPath, sessionID, logger)
 	if err != nil {
 		logger.Printf("update helper launch failed: %v", err)
 		return updateInstallFailure("无法启动更新助手", err, logPath), nil
 	}
 	willQuit := a.quitSoon()
 	logger.Printf("update helper started log=%q app_quit_scheduled=%t", helperLogPath, willQuit)
-	message := "TraceLog 将退出，更新助手会下载并安装新版本"
+	message := "安装包已下载并验证，TraceLog 将退出并安装新版本"
 	if !willQuit {
-		message = "更新助手已启动，会下载并安装新版本"
+		message = "安装包已下载并验证，更新助手会安装新版本"
 	}
 	return UpdateInstallResult{Started: true, Path: helperLogPath, Message: message, WillQuit: willQuit}, nil
 }
@@ -267,7 +284,7 @@ func openDesktopUpdateLogger(path string, sessionID string) (*log.Logger, func()
 	return logger, func() { _ = closer.Close() }, nil
 }
 
-func startUpdateHelper(info UpdateInfo, logPath string, sessionID string, logger *log.Logger) (string, error) {
+func startUpdateHelper(installerPath string, logPath string, sessionID string, logger *log.Logger) (string, error) {
 	logger.Printf("locating update helper name=%q", updaterExecutableName)
 	helperPath, err := findUpdateHelper()
 	if err != nil {
@@ -285,17 +302,14 @@ func startUpdateHelper(info UpdateInfo, logPath string, sessionID string, logger
 	}
 	logger.Printf("current executable resolved path=%q", executablePath)
 	args := []string{
-		"--asset-url", info.AssetURL,
-		"--asset-name", info.AssetName,
-		"--asset-digest", info.AssetDigest,
-		"--current-version", info.CurrentVersion,
+		"--installer-path", installerPath,
 		"--app-exe", executablePath,
 		"--app-pid", fmt.Sprint(os.Getpid()),
 		"--log-file", logPath,
 		"--session-id", sessionID,
 	}
 	command := exec.Command(helperPath, args...)
-	logger.Printf("starting update helper executable=%q asset=%q app_pid=%d log=%q", helperPath, info.AssetName, os.Getpid(), logPath)
+	logger.Printf("starting update helper executable=%q installer=%q app_pid=%d log=%q", helperPath, installerPath, os.Getpid(), logPath)
 	if err := command.Start(); err != nil {
 		return "", err
 	}
