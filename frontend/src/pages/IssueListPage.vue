@@ -56,8 +56,9 @@
 
 <script setup lang="ts">
 import { computed, h, ref, watch } from 'vue'
-import { NButton, NDataTable, NInput, NSelect, NTag, useMessage } from 'naive-ui'
+import { NButton, NDataTable, NInput, NSelect, NTag, NTooltip, useMessage } from 'naive-ui'
 import type { DataTableColumns } from 'naive-ui'
+import { Copy } from 'lucide-vue-next'
 import { useRoute, useRouter } from 'vue-router'
 import { api } from '../api/client'
 import type { Issue } from '../types'
@@ -67,6 +68,7 @@ import TypeTag from '../components/TypeTag.vue'
 import PriorityTag from '../components/PriorityTag.vue'
 import { formatDateTime } from '../utils/datetime'
 import { openExternalClick } from '../utils/openExternal'
+import { ClipboardSetText } from '../wailsjs/runtime/runtime'
 
 const route = useRoute()
 const router = useRouter()
@@ -178,6 +180,31 @@ const columns: DataTableColumns<Issue> = [
     key: 'created_at',
     width: 150,
     render: (row) => formatDate(row.created_at)
+  },
+  {
+    title: '操作',
+    key: 'actions',
+    width: 64,
+    render: (row) =>
+      h(
+        NTooltip,
+        null,
+        {
+          trigger: () =>
+            h(
+              NButton,
+              {
+                quaternary: true,
+                circle: true,
+                size: 'small',
+                'aria-label': `复制 ${row.jira_key} 和标题`,
+                onClick: () => copyIssueTitle(row)
+              },
+              { icon: () => h(Copy, { size: 16 }) }
+            ),
+          default: () => '复制编号和标题'
+        }
+      )
   }
 ]
 
@@ -282,6 +309,16 @@ function firstJiraLink(row: Issue) {
 
 function formatDate(value: string) {
   return formatDateTime(value)
+}
+
+async function copyIssueTitle(row: Issue) {
+  try {
+    const copied = await ClipboardSetText(`${row.jira_key} ${row.title}`)
+    if (!copied) throw new Error('无法写入剪贴板')
+    message.success('已复制 Issue 编号和标题')
+  } catch (error) {
+    message.error((error as Error).message || '复制失败')
+  }
 }
 
 watch(
