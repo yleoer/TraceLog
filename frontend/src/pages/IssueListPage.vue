@@ -56,9 +56,9 @@
 
 <script setup lang="ts">
 import { computed, h, ref, watch } from 'vue'
-import { NButton, NDataTable, NInput, NSelect, NTag, NTooltip, useMessage } from 'naive-ui'
+import { NButton, NDataTable, NInput, NSelect, NTag, useMessage } from 'naive-ui'
 import type { DataTableColumns } from 'naive-ui'
-import { Copy } from 'lucide-vue-next'
+import { Copy, Link2, RefreshCw } from 'lucide-vue-next'
 import { useRoute, useRouter } from 'vue-router'
 import { api } from '../api/client'
 import type { Issue } from '../types'
@@ -84,6 +84,7 @@ const allIssues = ref<Issue[]>([])
 const page = ref(1)
 const pageSize = 50
 const hasNextPage = ref(false)
+const refreshingIssueKeys = ref(new Set<string>())
 
 const statusOptions = computed(() => {
   const seen = new Set<string>()
@@ -128,15 +129,6 @@ const columns: DataTableColumns<Issue> = [
     key: 'summary_md',
     minWidth: 240,
     render: (row) => row.summary_md || row.solution_md || '-'
-  },
-  {
-    title: '地址',
-    key: 'links',
-    minWidth: 200,
-    render: (row) => {
-      const href = firstJiraLink(row)
-      return href ? h('a', { class: 'ext-link', href, onClick: openExternalClick(href) }, href) : '-'
-    }
   },
   {
     title: '类型',
@@ -184,27 +176,47 @@ const columns: DataTableColumns<Issue> = [
   {
     title: '操作',
     key: 'actions',
-    width: 64,
-    render: (row) =>
-      h(
-        NTooltip,
-        null,
-        {
-          trigger: () =>
-            h(
-              NButton,
-              {
-                quaternary: true,
-                circle: true,
-                size: 'small',
-                'aria-label': `复制 ${row.jira_key} 和标题`,
-                onClick: () => copyIssueTitle(row)
-              },
-              { icon: () => h(Copy, { size: 16 }) }
-            ),
-          default: () => '复制编号和标题'
-        }
-      )
+    width: 120,
+    render: (row) => {
+      const href = firstJiraLink(row)
+      return h('div', { class: 'issue-actions' }, [
+        h(
+          NButton,
+          {
+            quaternary: true,
+            circle: true,
+            size: 'small',
+            'aria-label': `复制 ${row.jira_key} 和标题`,
+            onClick: () => copyIssueTitle(row)
+          },
+          { icon: () => h(Copy, { size: 16 }) }
+        ),
+        h(
+          NButton,
+          {
+            quaternary: true,
+            circle: true,
+            size: 'small',
+            disabled: !href,
+            'aria-label': href ? `打开 ${row.jira_key} 地址` : '未设置 Issue 地址',
+            onClick: href ? openExternalClick(href) : undefined
+          },
+          { icon: () => h(Link2, { size: 16 }) }
+        ),
+        h(
+          NButton,
+          {
+            quaternary: true,
+            circle: true,
+            size: 'small',
+            loading: refreshingIssueKeys.value.has(row.jira_key),
+            'aria-label': `从 Jira 刷新 ${row.jira_key}`,
+            onClick: () => refreshIssueFromJira(row)
+          },
+          { icon: () => h(RefreshCw, { size: 16 }) }
+        )
+      ])
+    }
   }
 ]
 
@@ -321,6 +333,32 @@ async function copyIssueTitle(row: Issue) {
   }
 }
 
+async function refreshIssueFromJira(row: Issue) {
+  if (refreshingIssueKeys.value.has(row.jira_key)) return
+  refreshingIssueKeys.value = new Set(refreshingIssueKeys.value).add(row.jira_key)
+  try {
+    const imported = await api.importJiraIssue(row.jira_key)
+    await api.updateIssue(row.jira_key, {
+      ...row,
+      jira_key: imported.jira_key,
+      title: imported.title,
+      status: imported.status,
+      priority: imported.priority,
+      tags: imported.tags ?? [],
+      background_md: imported.background_md,
+      links: imported.links?.length ? imported.links : row.links
+    })
+    await load()
+    message.success('已从 Jira 刷新最新数据')
+  } catch (error) {
+    message.error((error as Error).message || '刷新 Jira 数据失败')
+  } finally {
+    const nextRefreshingKeys = new Set(refreshingIssueKeys.value)
+    nextRefreshingKeys.delete(row.jira_key)
+    refreshingIssueKeys.value = nextRefreshingKeys
+  }
+}
+
 watch(
   () => route.query,
   () => {
@@ -345,14 +383,9 @@ watch(
   background: rgba(var(--accent-rgb), 0.13);
 }
 
-.ext-link {
-  color: var(--accent);
-  font-size: 12px;
-  overflow-wrap: anywhere;
-}
-
-.ext-link:hover {
-  color: var(--accent-hover);
-  text-decoration: underline;
+.issue-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
 }
 </style>
