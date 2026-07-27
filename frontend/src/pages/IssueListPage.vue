@@ -127,7 +127,8 @@ const columns: DataTableColumns<Issue> = [
   {
     title: '简述',
     key: 'summary_md',
-    minWidth: 240,
+    width: 700,
+    ellipsis: { tooltip: true },
     render: (row) => row.summary_md || row.solution_md || '-'
   },
   {
@@ -154,17 +155,28 @@ const columns: DataTableColumns<Issue> = [
     minWidth: 140,
     render: (row) =>
       row.tags.length
-        ? row.tags.map((rowTag) =>
-            h(
-              NTag,
-              {
-                size: 'small',
-                style: 'margin-right: 4px; cursor: pointer',
-                onClick: () => showIssuesByTag(rowTag)
-              },
-              { default: () => rowTag }
-            )
-          )
+        ? [
+            ...row.tags.slice(0, 3).map((rowTag) =>
+              h(
+                NTag,
+                {
+                  size: 'small',
+                  style: 'margin-right: 4px; cursor: pointer',
+                  onClick: () => showIssuesByTag(rowTag)
+                },
+                { default: () => rowTag }
+              )
+            ),
+            ...(row.tags.length > 3
+              ? [
+                  h(
+                    'span',
+                    { class: 'issue-tags-more', title: row.tags.slice(3).join('、') },
+                    '...'
+                  )
+                ]
+              : [])
+          ]
         : '-'
   },
   {
@@ -387,5 +399,11 @@ watch(
   display: flex;
   align-items: center;
   gap: 2px;
+}
+
+.issue-tags-more {
+  color: var(--accent);
+  cursor: help;
+  font-weight: 600;
 }
 </style>
