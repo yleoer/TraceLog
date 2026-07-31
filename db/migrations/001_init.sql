@@ -20,6 +20,18 @@ CREATE TABLE IF NOT EXISTS issues (
   updated_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS issue_work_periods (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  issue_id INTEGER NOT NULL,
+  started_at TEXT NOT NULL,
+  completed_at TEXT NOT NULL DEFAULT '',
+  reopened_at TEXT NOT NULL DEFAULT '',
+  reopened_status TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY (issue_id) REFERENCES issues(id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS issue_events (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   issue_id INTEGER NOT NULL,
@@ -162,6 +174,7 @@ CREATE INDEX IF NOT EXISTS idx_issues_status ON issues(status);
 CREATE INDEX IF NOT EXISTS idx_issues_status_updated_at ON issues(status, updated_at);
 CREATE INDEX IF NOT EXISTS idx_issues_started_at ON issues(started_at);
 CREATE INDEX IF NOT EXISTS idx_issues_completed_at ON issues(completed_at);
+CREATE INDEX IF NOT EXISTS idx_issue_work_periods_issue_started_at ON issue_work_periods(issue_id, started_at);
 CREATE INDEX IF NOT EXISTS idx_issue_events_issue_id ON issue_events(issue_id);
 CREATE INDEX IF NOT EXISTS idx_issue_events_happened_at ON issue_events(happened_at);
 CREATE INDEX IF NOT EXISTS idx_issue_events_issue_happened_at ON issue_events(issue_id, happened_at, created_at);

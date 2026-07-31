@@ -86,6 +86,42 @@ func TestScanTempTaskReturnsInvalidJSONError(t *testing.T) {
 	}
 }
 
+func TestReplaceIssueWorkPeriodsCreatesTableForExistingDatabase(t *testing.T) {
+	store := newTestStore(t)
+	issueID := insertTestIssue(t, store.db, "GCS-1", "Done", `[]`, "")
+	periods := []service.IssueWorkPeriod{
+		{
+			StartedAt:      "2026-07-01T09:00:00Z",
+			CompletedAt:    "2026-07-02T17:30:00Z",
+			ReopenedAt:     "2026-07-03T09:00:00Z",
+			ReopenedStatus: "To Do",
+		},
+		{StartedAt: "2026-07-05T10:00:00Z"},
+	}
+	if err := store.ReplaceIssueWorkPeriods(context.Background(), issueID, periods); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := store.ListIssueWorkPeriods(context.Background(), issueID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[0].ReopenedAt != periods[0].ReopenedAt || got[1].StartedAt != periods[1].StartedAt {
+		t.Fatalf("unexpected persisted periods %#v", got)
+	}
+
+	if err := store.ReplaceIssueWorkPeriods(context.Background(), issueID, nil); err != nil {
+		t.Fatal(err)
+	}
+	got, err = store.ListIssueWorkPeriods(context.Background(), issueID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("expected replacement to remove stale periods, got %#v", got)
+	}
+}
+
 func TestDeleteIssueRemovesSearchIndexByJiraKey(t *testing.T) {
 	store := newTestStore(t)
 	insertTestIssue(t, store.db, "GCS-1", "In Progress", `[]`, "")

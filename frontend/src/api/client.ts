@@ -124,6 +124,7 @@ export const api = {
   installUpdate: () => nativeCall(() => DesktopApp.InstallUpdate()) as Promise<UpdateInstallResult>,
   listIssues: (params: QueryParams) => nativeCall(() => DesktopApp.ListIssues(service.IssueFilter.createFrom(issueFilter(params)))) as Promise<Issue[]>,
   importJiraIssue: (jiraKey: string) => nativeCall(() => DesktopApp.ImportJiraIssue(jiraKey)) as Promise<Issue>,
+  refreshJiraIssue: (jiraKey: string) => nativeCall(() => DesktopApp.RefreshJiraIssue(jiraKey)) as Promise<Issue>,
   createIssue: (issue: Partial<Issue>) => nativeCall(() => DesktopApp.CreateIssue(service.Issue.createFrom(issue))) as Promise<Issue>,
   getIssue: (jiraKey: string) => nativeCall(() => DesktopApp.GetIssue(jiraKey)) as Promise<Issue>,
   updateIssue: (jiraKey: string, issue: Partial<Issue>) =>

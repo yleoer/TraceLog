@@ -85,6 +85,8 @@ export function ListWeeks():Promise<Array<service.WeeklyLog>>;
 
 export function LogTempoTime(arg1:service.LogTimeRequest):Promise<service.LogTimeResult>;
 
+export function RefreshJiraIssue(arg1:string):Promise<service.Issue>;
+
 export function RefreshTimeWeek(arg1:string):Promise<service.TimeWeekView>;
 
 export function Search(arg1:string,arg2:string,arg3:number,arg4:number):Promise<Array<service.SearchResult>>;

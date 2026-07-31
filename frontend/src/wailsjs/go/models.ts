@@ -487,6 +487,28 @@ export namespace service {
 	        this.updated_at = source["updated_at"];
 	    }
 	}
+	export class IssueWorkPeriod {
+	    id: number;
+	    issue_id: number;
+	    started_at: string;
+	    completed_at: string;
+	    reopened_at: string;
+	    reopened_status: string;
+
+	    static createFrom(source: any = {}) {
+	        return new IssueWorkPeriod(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.issue_id = source["issue_id"];
+	        this.started_at = source["started_at"];
+	        this.completed_at = source["completed_at"];
+	        this.reopened_at = source["reopened_at"];
+	        this.reopened_status = source["reopened_status"];
+	    }
+	}
 	export class Link {
 	    title: string;
 	    url: string;
@@ -522,6 +544,7 @@ export namespace service {
 	    completed_at: string;
 	    created_at: string;
 	    updated_at: string;
+	    work_periods: IssueWorkPeriod[];
 	
 	    static createFrom(source: any = {}) {
 	        return new Issue(source);
@@ -547,6 +570,7 @@ export namespace service {
 	        this.completed_at = source["completed_at"];
 	        this.created_at = source["created_at"];
 	        this.updated_at = source["updated_at"];
+	        this.work_periods = this.convertValues(source["work_periods"], IssueWorkPeriod);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -1065,4 +1089,3 @@ export namespace service {
 	
 
 }
-

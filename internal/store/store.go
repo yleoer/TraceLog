@@ -39,6 +39,20 @@ CREATE TABLE IF NOT EXISTS activity_events (
 CREATE INDEX IF NOT EXISTS idx_activity_events_happened_at ON activity_events(happened_at);
 CREATE INDEX IF NOT EXISTS idx_activity_events_ref ON activity_events(source, ref_id);`
 
+const issueWorkPeriodsSchema = `
+CREATE TABLE IF NOT EXISTS issue_work_periods (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  issue_id INTEGER NOT NULL,
+  started_at TEXT NOT NULL,
+  completed_at TEXT NOT NULL DEFAULT '',
+  reopened_at TEXT NOT NULL DEFAULT '',
+  reopened_status TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY (issue_id) REFERENCES issues(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_issue_work_periods_issue_started_at ON issue_work_periods(issue_id, started_at);`
+
 const performanceSchema = `
 CREATE TABLE IF NOT EXISTS issue_tags (
   issue_id INTEGER NOT NULL,
@@ -184,6 +198,9 @@ func (s *Store) EnsurePerformanceSchema(ctx context.Context) error {
 	if _, err := s.activeRunner().ExecContext(ctx, performanceSchema); err != nil {
 		return err
 	}
+	if err := s.ensureIssueWorkPeriodsTable(ctx); err != nil {
+		return err
+	}
 	if err := s.backfillTagTables(ctx); err != nil {
 		return err
 	}
@@ -192,6 +209,11 @@ func (s *Store) EnsurePerformanceSchema(ctx context.Context) error {
 
 func (s *Store) ensureActivityEventsTable(ctx context.Context) error {
 	_, err := s.activeRunner().ExecContext(ctx, activityEventsSchema)
+	return err
+}
+
+func (s *Store) ensureIssueWorkPeriodsTable(ctx context.Context) error {
+	_, err := s.activeRunner().ExecContext(ctx, issueWorkPeriodsSchema)
 	return err
 }
 
@@ -233,6 +255,46 @@ func (s *Store) ListIssues(ctx context.Context, filter service.IssueFilter) ([]s
 func (s *Store) GetIssue(ctx context.Context, jiraKey string) (service.Issue, error) {
 	row := s.activeRunner().QueryRowContext(ctx, `SELECT id, jira_key, title, status, priority, tags, summary_md, background_md, analysis_md, solution_md, actions_md, result_md, todo_md, links_json, started_at, completed_at, created_at, updated_at FROM issues WHERE jira_key = ?`, jiraKey)
 	return scanIssue(row)
+}
+
+func (s *Store) ListIssueWorkPeriods(ctx context.Context, issueID int64) ([]service.IssueWorkPeriod, error) {
+	if err := s.ensureIssueWorkPeriodsTable(ctx); err != nil {
+		return nil, err
+	}
+	rows, err := s.activeRunner().QueryContext(ctx, `SELECT id, issue_id, started_at, completed_at, reopened_at, reopened_status FROM issue_work_periods WHERE issue_id = ? ORDER BY started_at ASC, id ASC`, issueID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	periods := []service.IssueWorkPeriod{}
+	for rows.Next() {
+		period := service.IssueWorkPeriod{}
+		if err := rows.Scan(&period.ID, &period.IssueID, &period.StartedAt, &period.CompletedAt, &period.ReopenedAt, &period.ReopenedStatus); err != nil {
+			return nil, err
+		}
+		periods = append(periods, period)
+	}
+	return periods, rows.Err()
+}
+
+func (s *Store) ReplaceIssueWorkPeriods(ctx context.Context, issueID int64, periods []service.IssueWorkPeriod) error {
+	return s.withTx(ctx, func(tx *sql.Tx) error {
+		if _, err := tx.ExecContext(ctx, issueWorkPeriodsSchema); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `DELETE FROM issue_work_periods WHERE issue_id = ?`, issueID); err != nil {
+			return err
+		}
+		now := time.Now().UTC().Format(time.RFC3339)
+		for _, period := range periods {
+			if _, err := tx.ExecContext(ctx, `INSERT INTO issue_work_periods (issue_id, started_at, completed_at, reopened_at, reopened_status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+				issueID, period.StartedAt, period.CompletedAt, period.ReopenedAt, period.ReopenedStatus, now, now); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
 
 func (s *Store) CreateIssue(ctx context.Context, issue service.Issue) (service.Issue, error) {

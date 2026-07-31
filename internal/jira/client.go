@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -24,10 +25,26 @@ type Client struct {
 }
 
 type Issue struct {
-	ID     string      `json:"id"`
-	Key    string      `json:"key"`
-	Self   string      `json:"self"`
-	Fields IssueFields `json:"fields"`
+	ID        string          `json:"id"`
+	Key       string          `json:"key"`
+	Self      string          `json:"self"`
+	Fields    IssueFields     `json:"fields"`
+	Changelog []ChangeHistory `json:"-"`
+}
+
+type ChangeHistory struct {
+	ID      string       `json:"id"`
+	Created string       `json:"created"`
+	Items   []ChangeItem `json:"items"`
+}
+
+type ChangeItem struct {
+	Field      string `json:"field"`
+	FieldID    string `json:"fieldId"`
+	From       string `json:"from"`
+	FromString string `json:"fromString"`
+	To         string `json:"to"`
+	ToString   string `json:"toString"`
 }
 
 type IssueFields struct {
@@ -162,12 +179,78 @@ func (c *Client) GetIssue(ctx context.Context, issueKey string) (Issue, error) {
 		}
 		fields.ReleaseRequested = releaseRequested
 	}
+	changelog, err := c.GetIssueChangelog(ctx, rawIssue.Key)
+	if err != nil {
+		return Issue{}, err
+	}
 	return Issue{
-		ID:     rawIssue.ID,
-		Key:    rawIssue.Key,
-		Self:   rawIssue.Self,
-		Fields: fields,
+		ID:        rawIssue.ID,
+		Key:       rawIssue.Key,
+		Self:      rawIssue.Self,
+		Fields:    fields,
+		Changelog: changelog,
 	}, nil
+}
+
+func (c *Client) GetIssueChangelog(ctx context.Context, issueKey string) ([]ChangeHistory, error) {
+	if !c.Configured() {
+		return nil, ErrNotConfigured
+	}
+
+	const pageSize = 100
+	histories := []ChangeHistory{}
+	for startAt := 0; ; {
+		query := url.Values{}
+		query.Set("startAt", strconv.Itoa(startAt))
+		query.Set("maxResults", strconv.Itoa(pageSize))
+		endpoint := fmt.Sprintf(
+			"%s/rest/api/3/issue/%s/changelog?%s",
+			c.baseURL,
+			url.PathEscape(strings.ToUpper(issueKey)),
+			query.Encode(),
+		)
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+		if err != nil {
+			return nil, err
+		}
+		req.SetBasicAuth(c.email, c.apiToken)
+		req.Header.Set("Accept", "application/json")
+
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			return nil, err
+		}
+		if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+			resp.Body.Close()
+			return nil, ErrUnauthorized
+		}
+		if resp.StatusCode == http.StatusNotFound {
+			resp.Body.Close()
+			return nil, ErrNotFound
+		}
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			resp.Body.Close()
+			return nil, fmt.Errorf("jira returned status %d", resp.StatusCode)
+		}
+
+		var page struct {
+			StartAt int             `json:"startAt"`
+			Total   int             `json:"total"`
+			IsLast  bool            `json:"isLast"`
+			Values  []ChangeHistory `json:"values"`
+		}
+		err = json.NewDecoder(resp.Body).Decode(&page)
+		resp.Body.Close()
+		if err != nil {
+			return nil, err
+		}
+		histories = append(histories, page.Values...)
+		nextStartAt := page.StartAt + len(page.Values)
+		if page.IsLast || len(page.Values) == 0 || (page.Total > 0 && nextStartAt >= page.Total) {
+			return histories, nil
+		}
+		startAt = nextStartAt
+	}
 }
 
 func (c *Client) GetIssueID(ctx context.Context, issueKey string) (int64, error) {

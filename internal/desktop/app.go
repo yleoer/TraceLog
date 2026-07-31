@@ -163,6 +163,12 @@ func (a *App) ImportJiraIssue(jiraKey string) (service.Issue, error) {
 	return a.service.ImportJiraIssue(ctx, jiraKey)
 }
 
+func (a *App) RefreshJiraIssue(jiraKey string) (service.Issue, error) {
+	ctx, cancel := a.longCallContext()
+	defer cancel()
+	return a.service.RefreshJiraIssue(ctx, jiraKey)
+}
+
 func (a *App) CreateIssue(issue service.Issue) (service.Issue, error) {
 	ctx, cancel := a.defaultCallContext()
 	defer cancel()

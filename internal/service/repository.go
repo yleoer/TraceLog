@@ -11,6 +11,8 @@ type IssueRepository interface {
 	UpdateIssue(context.Context, Issue) (Issue, error)
 	DeleteIssue(context.Context, string) error
 	ListIssuesUpdatedBetween(context.Context, string, string) ([]Issue, error)
+	ListIssueWorkPeriods(context.Context, int64) ([]IssueWorkPeriod, error)
+	ReplaceIssueWorkPeriods(context.Context, int64, []IssueWorkPeriod) error
 }
 
 type IssueTodoRepository interface {

@@ -87,11 +87,11 @@
         </div>
         <div v-if="!isNew" class="border-b border-gray-100 pb-3">
           <label class="field-label">开始时间</label>
-          <TimePresetDatePicker v-model:value="manual.startedAt" @update:value="saveManualFieldsSoon" />
+          <div class="text-sm">{{ form.started_at ? formatDateTime(form.started_at) : '-' }}</div>
         </div>
         <div v-if="!isNew" class="border-b border-gray-100 pb-3">
           <label class="field-label">完成时间</label>
-          <TimePresetDatePicker v-model:value="manual.completedAt" @update:value="saveManualFieldsSoon" />
+          <div class="text-sm">{{ form.completed_at ? formatDateTime(form.completed_at) : '-' }}</div>
         </div>
       </div>
 
@@ -108,6 +108,34 @@
           <MarkdownView :content="jiraMeta.description" />
         </n-collapse-item>
       </n-collapse>
+    </section>
+
+    <section v-if="!isNew && form.work_periods.length > 1" class="card">
+      <h2 class="text-sm font-semibold text-gray-900 mb-4">工作周期</h2>
+      <div class="space-y-3">
+        <template v-for="(period, index) in form.work_periods" :key="period.id || `${period.started_at}-${index}`">
+          <div class="work-period">
+            <div class="flex items-center justify-between gap-3 mb-3">
+              <h3 class="text-sm font-medium text-gray-800">周期 {{ index + 1 }}</h3>
+              <span class="text-xs text-gray-500">{{ workPeriodDuration(period) }}</span>
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+              <div>
+                <span class="field-label">开始</span>
+                <span>{{ formatDateTime(period.started_at) }}</span>
+              </div>
+              <div>
+                <span class="field-label">完成</span>
+                <span>{{ period.completed_at ? formatDateTime(period.completed_at) : '进行中' }}</span>
+              </div>
+            </div>
+          </div>
+          <div v-if="period.reopened_at" class="work-pause">
+            <span class="font-medium">重新打开</span>
+            <span>{{ period.reopened_status || 'To Do' }} · {{ workPauseRange(period, index) }}</span>
+          </div>
+        </template>
+      </div>
     </section>
 
     <!-- My records -->
@@ -194,7 +222,7 @@ import StatusTag from '../components/StatusTag.vue'
 import TypeTag from '../components/TypeTag.vue'
 import PriorityTag from '../components/PriorityTag.vue'
 import TimePresetDatePicker from '../components/TimePresetDatePicker.vue'
-import type { Issue, IssueEvent, IssueTodo, Link } from '../types'
+import type { Issue, IssueEvent, IssueTodo, IssueWorkPeriod, Link } from '../types'
 import { parseJiraMeta } from '../utils/jiraDisplay'
 import { formatDateTime as sharedFormatDateTime } from '../utils/datetime'
 import { openExternalURL } from '../utils/openExternal'
@@ -240,6 +268,7 @@ interface IssueForm {
   completed_at: string
   created_at: string
   updated_at: string
+  work_periods: IssueWorkPeriod[]
 }
 
 const form = reactive<IssueForm>({
@@ -260,12 +289,11 @@ const form = reactive<IssueForm>({
   started_at: '',
   completed_at: '',
   created_at: '',
-  updated_at: ''
+  updated_at: '',
+  work_periods: []
 })
 
 const manual = reactive({
-  startedAt: null as number | null,
-  completedAt: null as number | null,
   summary: ''
 })
 
@@ -326,7 +354,10 @@ async function importFromJira() {
       priority: imported.priority,
       tags: imported.tags ?? [],
       background_md: imported.background_md,
-      links: imported.links?.length ? imported.links : [{ title: 'Jira', url: `${ATLASSIAN_BASE_URL}/browse/${imported.jira_key}`, type: 'jira' }]
+      links: imported.links?.length ? imported.links : [{ title: 'Jira', url: `${ATLASSIAN_BASE_URL}/browse/${imported.jira_key}`, type: 'jira' }],
+      started_at: imported.started_at,
+      completed_at: imported.completed_at,
+      work_periods: imported.work_periods ?? []
     })
     if (!form.created_at) {
       form.created_at = new Date().toISOString()
@@ -346,17 +377,7 @@ async function refreshFromJira() {
   refreshingJira.value = true
   try {
     await flushManualFields()
-    const imported = await api.importJiraIssue(jiraKey)
-    const updated = await api.updateIssue(jiraKey, {
-      ...form,
-      jira_key: imported.jira_key,
-      title: imported.title,
-      status: imported.status,
-      priority: imported.priority,
-      tags: imported.tags ?? [],
-      background_md: imported.background_md,
-      links: imported.links?.length ? imported.links : [{ title: 'Jira', url: `${ATLASSIAN_BASE_URL}/browse/${imported.jira_key}`, type: 'jira' }]
-    })
+    const updated = await api.refreshJiraIssue(jiraKey)
     Object.assign(form, updated)
     hydrateManualFields()
     jiraInput.value = form.jira_key
@@ -533,14 +554,10 @@ async function deleteTodo(todo: IssueTodo) {
 }
 
 function hydrateManualFields() {
-  manual.startedAt = parseMillis(form.started_at)
-  manual.completedAt = parseMillis(form.completed_at)
   manual.summary = form.summary_md || ''
 }
 
 function serializeManualFields() {
-  form.started_at = manual.startedAt ? new Date(manual.startedAt).toISOString() : ''
-  form.completed_at = manual.completedAt ? new Date(manual.completedAt).toISOString() : ''
   form.summary_md = manual.summary
 }
 
@@ -569,6 +586,26 @@ function todoDueValue(todo: IssueTodo) {
 
 function todoDueLabel(todo: IssueTodo) {
   return todo.due_at ? `截止 ${formatDateTime(todo.due_at)}` : '未设置截止时间'
+}
+
+function workPeriodDuration(period: IssueWorkPeriod) {
+  if (!period.completed_at) return '进行中'
+  const startedAt = Date.parse(period.started_at)
+  const completedAt = Date.parse(period.completed_at)
+  if (Number.isNaN(startedAt) || Number.isNaN(completedAt) || completedAt < startedAt) return '-'
+  const totalMinutes = Math.floor((completedAt - startedAt) / 60000)
+  const days = Math.floor(totalMinutes / (24 * 60))
+  const hours = Math.floor((totalMinutes % (24 * 60)) / 60)
+  const minutes = totalMinutes % 60
+  if (days > 0) return `${days} 天 ${hours} 小时 ${minutes} 分`
+  if (hours > 0) return `${hours} 小时 ${minutes} 分`
+  return `${minutes} 分`
+}
+
+function workPauseRange(period: IssueWorkPeriod, index: number) {
+  const nextStartedAt = form.work_periods[index + 1]?.started_at
+  if (nextStartedAt) return `${formatDateTime(period.reopened_at)} - ${formatDateTime(nextStartedAt)}`
+  return `当前待处理，自 ${formatDateTime(period.reopened_at)} 起`
 }
 
 function formatDateTime(value: string) {
@@ -653,6 +690,21 @@ onBeforeUnmount(() => {
 .todo-due-display:disabled {
   cursor: wait;
   opacity: 0.6;
+}
+
+.work-period {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 14px;
+}
+
+.work-pause {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 2px 0 0 14px;
+  color: #6b7280;
+  font-size: 12px;
 }
 
 @media (max-width: 640px) {

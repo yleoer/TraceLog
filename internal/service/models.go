@@ -7,24 +7,34 @@ type Link struct {
 }
 
 type Issue struct {
-	ID           int64    `json:"id"`
-	JiraKey      string   `json:"jira_key"`
-	Title        string   `json:"title"`
-	Status       string   `json:"status"`
-	Priority     string   `json:"priority"`
-	Tags         []string `json:"tags"`
-	SummaryMD    string   `json:"summary_md"`
-	BackgroundMD string   `json:"background_md"`
-	AnalysisMD   string   `json:"analysis_md"`
-	SolutionMD   string   `json:"solution_md"`
-	ActionsMD    string   `json:"actions_md"`
-	ResultMD     string   `json:"result_md"`
-	TodoMD       string   `json:"todo_md"`
-	Links        []Link   `json:"links"`
-	StartedAt    string   `json:"started_at"`
-	CompletedAt  string   `json:"completed_at"`
-	CreatedAt    string   `json:"created_at"`
-	UpdatedAt    string   `json:"updated_at"`
+	ID           int64             `json:"id"`
+	JiraKey      string            `json:"jira_key"`
+	Title        string            `json:"title"`
+	Status       string            `json:"status"`
+	Priority     string            `json:"priority"`
+	Tags         []string          `json:"tags"`
+	SummaryMD    string            `json:"summary_md"`
+	BackgroundMD string            `json:"background_md"`
+	AnalysisMD   string            `json:"analysis_md"`
+	SolutionMD   string            `json:"solution_md"`
+	ActionsMD    string            `json:"actions_md"`
+	ResultMD     string            `json:"result_md"`
+	TodoMD       string            `json:"todo_md"`
+	Links        []Link            `json:"links"`
+	StartedAt    string            `json:"started_at"`
+	CompletedAt  string            `json:"completed_at"`
+	CreatedAt    string            `json:"created_at"`
+	UpdatedAt    string            `json:"updated_at"`
+	WorkPeriods  []IssueWorkPeriod `json:"work_periods"`
+}
+
+type IssueWorkPeriod struct {
+	ID             int64  `json:"id"`
+	IssueID        int64  `json:"issue_id"`
+	StartedAt      string `json:"started_at"`
+	CompletedAt    string `json:"completed_at"`
+	ReopenedAt     string `json:"reopened_at"`
+	ReopenedStatus string `json:"reopened_status"`
 }
 
 type IssueTodo struct {

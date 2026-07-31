@@ -80,8 +80,31 @@ func (s *IntegrationService) ImportJiraIssue(ctx context.Context, jiraKey string
 			{Title: "Jira", URL: browseURL, Type: "jira"},
 		},
 	}
+	issue.WorkPeriods, issue.StartedAt, issue.CompletedAt = issueWorkPeriodsFromChangelog(remoteIssue.Changelog)
 	defaultIssueFields(&issue)
 	return issue, nil
+}
+
+func (s *IntegrationService) RefreshJiraIssue(ctx context.Context, jiraKey string) (Issue, error) {
+	imported, err := s.ImportJiraIssue(ctx, jiraKey)
+	if err != nil {
+		return Issue{}, err
+	}
+	existing, err := s.issues.GetIssue(ctx, imported.JiraKey)
+	if err != nil {
+		return Issue{}, err
+	}
+
+	existing.Title = imported.Title
+	existing.Status = imported.Status
+	existing.Priority = imported.Priority
+	existing.Tags = imported.Tags
+	existing.BackgroundMD = imported.BackgroundMD
+	existing.Links = imported.Links
+	existing.StartedAt = imported.StartedAt
+	existing.CompletedAt = imported.CompletedAt
+	existing.WorkPeriods = imported.WorkPeriods
+	return s.issues.UpdateIssueWithWorkPeriods(ctx, existing.JiraKey, existing, imported.WorkPeriods)
 }
 
 func (s *serviceCore) jiraClient() (*jira.Client, error) {

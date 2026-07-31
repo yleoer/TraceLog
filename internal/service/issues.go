@@ -12,7 +12,15 @@ func (s *IssueService) ListIssues(ctx context.Context, filter IssueFilter) ([]Is
 
 func (s *IssueService) GetIssue(ctx context.Context, jiraKey string) (Issue, error) {
 	issue, err := s.repo.GetIssue(ctx, strings.ToUpper(jiraKey))
-	return issue, mapError(err)
+	if err != nil {
+		return Issue{}, mapError(err)
+	}
+	periods, err := s.repo.ListIssueWorkPeriods(ctx, issue.ID)
+	if err != nil {
+		return Issue{}, err
+	}
+	issue.WorkPeriods = periods
+	return issue, nil
 }
 
 func (s *IssueService) CreateIssue(ctx context.Context, issue Issue) (Issue, error) {
@@ -33,6 +41,12 @@ func (s *IssueService) CreateIssue(ctx context.Context, issue Issue) (Issue, err
 		if err != nil {
 			return err
 		}
+		if len(issue.WorkPeriods) > 0 {
+			if err := repo.ReplaceIssueWorkPeriods(ctx, created.ID, issue.WorkPeriods); err != nil {
+				return err
+			}
+			created.WorkPeriods = append([]IssueWorkPeriod(nil), issue.WorkPeriods...)
+		}
 		if err := recordIssueActivity(ctx, repo, created, "created", ""); err != nil {
 			return err
 		}
@@ -44,6 +58,14 @@ func (s *IssueService) CreateIssue(ctx context.Context, issue Issue) (Issue, err
 }
 
 func (s *IssueService) UpdateIssue(ctx context.Context, jiraKey string, issue Issue) (Issue, error) {
+	return s.updateIssue(ctx, jiraKey, issue, nil)
+}
+
+func (s *IssueService) UpdateIssueWithWorkPeriods(ctx context.Context, jiraKey string, issue Issue, workPeriods []IssueWorkPeriod) (Issue, error) {
+	return s.updateIssue(ctx, jiraKey, issue, &workPeriods)
+}
+
+func (s *IssueService) updateIssue(ctx context.Context, jiraKey string, issue Issue, workPeriods *[]IssueWorkPeriod) (Issue, error) {
 	existing, err := s.GetIssue(ctx, jiraKey)
 	if err != nil {
 		return Issue{}, err
@@ -65,8 +87,17 @@ func (s *IssueService) UpdateIssue(ctx context.Context, jiraKey string, issue Is
 		if err != nil {
 			return err
 		}
+		if workPeriods != nil {
+			if err := repo.ReplaceIssueWorkPeriods(ctx, updated.ID, *workPeriods); err != nil {
+				return err
+			}
+		}
 		return indexIssue(ctx, repo, updated)
 	}); err != nil {
+		return Issue{}, err
+	}
+	updated.WorkPeriods, err = s.repo.ListIssueWorkPeriods(ctx, updated.ID)
+	if err != nil {
 		return Issue{}, err
 	}
 	return updated, nil

@@ -23,6 +23,16 @@ export interface Issue {
   completed_at: string
   created_at: string
   updated_at: string
+  work_periods: IssueWorkPeriod[]
+}
+
+export interface IssueWorkPeriod {
+  id: number
+  issue_id: number
+  started_at: string
+  completed_at: string
+  reopened_at: string
+  reopened_status: string
 }
 
 export interface IssueTodo {

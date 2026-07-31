@@ -3,7 +3,9 @@ package service
 import (
 	"fmt"
 	"regexp"
+	"sort"
 	"strings"
+	"time"
 
 	"tracelog/internal/jira"
 )
@@ -50,6 +52,99 @@ func renderJiraBackground(issue jira.Issue, browseURL string) string {
 		b.WriteString("\n")
 	}
 	return strings.TrimSpace(b.String())
+}
+
+func issueWorkPeriodsFromChangelog(histories []jira.ChangeHistory) ([]IssueWorkPeriod, string, string) {
+	type statusChange struct {
+		from     string
+		to       string
+		happened time.Time
+		sequence int
+	}
+
+	changes := []statusChange{}
+	sequence := 0
+	for _, history := range histories {
+		happened, ok := parseJiraHistoryTime(history.Created)
+		if !ok {
+			continue
+		}
+		for _, item := range history.Items {
+			if !strings.EqualFold(item.Field, "status") && !strings.EqualFold(item.FieldID, "status") {
+				continue
+			}
+			changes = append(changes, statusChange{
+				from:     strings.TrimSpace(item.FromString),
+				to:       strings.TrimSpace(item.ToString),
+				happened: happened,
+				sequence: sequence,
+			})
+			sequence++
+		}
+	}
+
+	sort.SliceStable(changes, func(i, j int) bool {
+		if changes[i].happened.Equal(changes[j].happened) {
+			return changes[i].sequence < changes[j].sequence
+		}
+		return changes[i].happened.Before(changes[j].happened)
+	})
+
+	periods := []IssueWorkPeriod{}
+	firstStartedAt := ""
+	firstCompletedAt := ""
+	activePeriod := -1
+	for _, change := range changes {
+		happenedAt := change.happened.UTC().Format(time.RFC3339)
+		if firstStartedAt == "" && isToDoJiraStatus(change.from) && isActiveIssueStatus(change.to) {
+			firstStartedAt = happenedAt
+		}
+
+		if isActiveIssueStatus(change.to) && !isActiveIssueStatus(change.from) {
+			if activePeriod == -1 {
+				periods = append(periods, IssueWorkPeriod{StartedAt: happenedAt})
+				activePeriod = len(periods) - 1
+			}
+			continue
+		}
+
+		if activePeriod != -1 && isDoneIssueStatus(change.to) && !isDoneIssueStatus(change.from) {
+			periods[activePeriod].CompletedAt = happenedAt
+			if firstCompletedAt == "" {
+				firstCompletedAt = happenedAt
+			}
+			activePeriod = -1
+			continue
+		}
+
+		if activePeriod == -1 && isToDoJiraStatus(change.to) && !isToDoJiraStatus(change.from) && len(periods) > 0 {
+			last := &periods[len(periods)-1]
+			if last.CompletedAt != "" && last.ReopenedAt == "" {
+				last.ReopenedAt = happenedAt
+				last.ReopenedStatus = change.to
+			}
+		}
+	}
+	return periods, firstStartedAt, firstCompletedAt
+}
+
+func parseJiraHistoryTime(value string) (time.Time, bool) {
+	value = strings.TrimSpace(value)
+	for _, layout := range []string{
+		time.RFC3339Nano,
+		"2006-01-02T15:04:05.999999999-0700",
+		"2006-01-02T15:04:05-0700",
+	} {
+		if parsed, err := time.Parse(layout, value); err == nil {
+			return parsed, true
+		}
+	}
+	return time.Time{}, false
+}
+
+func isToDoJiraStatus(status string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(status))
+	return normalized == "to do" || normalized == "to-do" || normalized == "todo" || strings.Contains(status, "待处理")
 }
 
 func writeNames(b *strings.Builder, label string, values []jira.Named) bool {

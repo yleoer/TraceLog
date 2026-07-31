@@ -166,6 +166,10 @@ export function LogTempoTime(arg1) {
   return window['go']['desktop']['App']['LogTempoTime'](arg1);
 }
 
+export function RefreshJiraIssue(arg1) {
+  return window['go']['desktop']['App']['RefreshJiraIssue'](arg1);
+}
+
 export function RefreshTimeWeek(arg1) {
   return window['go']['desktop']['App']['RefreshTimeWeek'](arg1);
 }
