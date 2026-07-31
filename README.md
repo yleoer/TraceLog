@@ -1,6 +1,6 @@
 # TraceLog
 
-TraceLog 是一个基于 Wails 的桌面应用，用于记录 Jira 问题分析、处理过程笔记、临时需求、每日工作、周报、全局搜索、带图片的 Markdown 记录，以及长期 Markdown/JSON 导出。
+TraceLog 是一个基于 Wails 的个人桌面工作日志应用，用于集中跟进 Jira Issue、临时需求、每日工作和周报。它会在刷新 Jira 时同步状态历史，沉淀工作周期，并提供月度甘特图、带图片的 Markdown 记录、全局搜索和长期 Markdown/JSON 导出。
 
 ## 技术栈
 
@@ -10,6 +10,15 @@ TraceLog 是一个基于 Wails 的桌面应用，用于记录 Jira 问题分析�
 - 运行时 API：Vue 通过 Wails 原生绑定直接调用 Go
 
 TraceLog 不再运行本地 HTTP API、Docker Compose 或独立后端服务。`frontend/src/api/client.ts` 是前端唯一的 API facade，底层只委托给 Wails 生成的绑定。
+
+## 核心功能
+
+- **Jira 同步与 Issue 管理**：通过 Issue Key 导入或刷新 Jira 信息，维护简述、评论、TODO、分析与解决方案等 Markdown 记录；支持筛选、搜索、复制 Jira 编号和标题，以及单项 Markdown 导出。
+- **状态历史与工作周期**：刷新 Jira 时分页读取完整的 Activity History。首次从 `To Do` 进入 `In Progress` 会记录开始时间，首次进入 `Done`、`Resolved`、`Closed` 等完成状态会记录完成时间；重新打开后再次开始和完成会保留为独立周期。
+- **标签管理**：Jira 原始标签与自定义标签分别保存。Issue 列表优先显示自定义标签，没有自定义标签时显示 Jira 标签；输入自定义标签时可匹配已有标签。
+- **月度甘特图**：按月展示 Issue 与临时需求的工作周期，支持月份切换、多段周期、进行中事项和跳转详情。
+- **每日与周视图**：按当天或指定周汇总工作记录、Issue、临时需求和待跟进 TODO，支持生成 Markdown 草稿、AI 总结、编辑下周计划和导出周报。
+- **其他工作流**：支持临时需求跟踪、Tempo Time 查看和提交、全局搜索、AI 简述生成，以及完整 JSON 与 Markdown ZIP 导出。
 
 ## 开发
 
@@ -37,7 +46,7 @@ wails dev
 go run ./cmd/seed-demo
 ```
 
-默认写入位置是系统用户配置目录下的 `TraceLog/tracelog.db`。数据包含 `TL-1001`、`TL-1002`、`TL-1003`、临时任务、评论、TODO、日记录、周报和搜索索引，方便验证 Dashboard、Issues、Today、Weekly、Search 和导出流程。
+默认写入位置是系统用户配置目录下的 `TraceLog/tracelog.db`。数据包含 `TL-1001`、`TL-1002`、`TL-1003`、临时任务、评论、TODO、日记录、周报和搜索索引，方便验证 Dashboard、Issues、Today、Weekly、甘特图、Search 和导出流程。
 
 ## 构建
 
@@ -46,6 +55,7 @@ go run ./cmd/seed-demo
 ```powershell
 npm.cmd --prefix frontend run build
 wails build -clean -debug -nopackage
+Remove-Item -Recurse -Force frontend/dist/app
 ```
 
 生产构建会把 `frontend/dist/app` 嵌入 Go 二进制，不需要 Docker、浏览器服务器或本地 HTTP API。
@@ -54,14 +64,16 @@ wails build -clean -debug -nopackage
 
 GitHub Actions 会通过 [.github/workflows/release.yml](.github/workflows/release.yml) 为不同平台生成正式桌面产物。
 
-可以在 GitHub Actions 页面手动运行 `Release Builds` workflow 生成可下载 artifact。要发布到 GitHub Release，推送版本 tag：
+可以在 GitHub Actions 页面手动运行 `Release Builds` workflow 生成可下载 artifact。要发布到 GitHub Release，先提交发布说明，再创建并推送注释 tag：
 
 ```powershell
-git tag v0.1.0
-git push origin v0.1.0
+$tag = 'v0.1.9'
+git push origin main
+git tag -a $tag -m "发布 $tag"
+git push origin $tag
 ```
 
-如需自定义 GitHub Release 文案，先在 `release-notes/` 下创建同名 Markdown 文件，例如 `release-notes/v0.1.0.md`。workflow 会优先使用该文件；如果文件不存在，则回退到 GitHub 自动生成的 release notes。
+如需自定义 GitHub Release 文案，先在 `release-notes/` 下创建与 tag 同名的 Markdown 文件，例如 `release-notes/v0.1.9.md`。workflow 会优先使用该文件；如果文件不存在，则回退到 GitHub 自动生成的 release notes。
 
 如需用仓库中的文案更新历史 GitHub Release，确认 `gh` 已登录后执行：
 
@@ -100,14 +112,16 @@ workflow 会从根目录构建 Wails 应用并上传：
 
 Jira 和 AI 凭据也可以在 Settings 页面保存。
 
-## 主要功能
+## 界面说明
 
-- Dashboard：查看最近 Issue、进行中的 Issue、临时任务和待跟进 TODO。
-- Issue 详情：维护 Jira 元数据、摘要、开始/完成时间、时间线评论、带图片的 Markdown 笔记和结构化 TODO。
-- Today：查看当天 Issue 更新、评论、临时任务、到期 TODO、手动日记录和周报草稿片段。
-- Weekly：聚合本周 Issue、评论、临时任务、TODO、已完成项、进行中事项，并生成 Markdown 草稿或 AI 周总结。
-- Search：全局搜索 Issue、评论、TODO、临时任务和周报；搜索结果可直接跳转到对应详情页。
-- Settings：配置 Jira/AI、编辑提示词、导出完整 JSON 和 Markdown ZIP。
+- **Dashboard**：按导入时间展示最近导入的 Issues，并集中查看进行中 Issues、临时需求、待跟进 TODO 和本周概览。
+- **Issues**：列表默认按导入时间倒序排列；支持按状态、标签和关键词筛选。详情页展示 Jira 元数据、开始和完成时间；存在多个工作周期时会显示每段周期与重新打开记录。
+- **临时需求**：记录计划外工作，可维护来源、状态、优先级、起止时间和关联 Jira。
+- **今日工作流**：汇总当天更新的 Issues、每日记录、临时需求和 TODO。
+- **周视图**：Issues 仅纳入当周有评论、开始时间或完成时间的项目，不因导入时间而纳入；临时需求和后续 TODO 只在有数据时展示。
+- **甘特图**：显示所选月份内与该月重叠的工作周期，每条横线表示一个开始至完成的周期。
+- **Time**：查看 Tempo 周工时，并按日期范围提交工作日志。
+- **全局搜索与设置**：搜索 Issue、评论、TODO、临时需求和周报；配置 Jira、AI、提示词和导出。
 
 ## 验证
 

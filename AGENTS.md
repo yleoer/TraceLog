@@ -43,6 +43,11 @@
 - 修改 Wails 暴露模型后，确认前端类型和绑定文件一致。
 - 构建会生成 `frontend/dist/app`，验证后必须清理；`frontend/dist` 只保留 `.gitkeep`。
 
+## 文档约定
+
+- 新增功能，或修改已有功能的用户可见行为、使用方式、配置方式、构建方式或发布流程时，必须同步更新 `README.md`。
+- 创建发布版本前，核对 `README.md` 是否已如实反映本次功能与流程变更。
+
 ## Go 约定
 
 - 业务规则放在 `internal/service`，数据库细节放在 `internal/store`。
