@@ -157,7 +157,7 @@ export interface SearchResult {
 }
 
 export interface Dashboard {
-  recent_issues: Issue[]
+  recently_imported_issues: Issue[]
   active_issues: Issue[]
   temp_tasks: TempTask[]
   todos: IssueTodo[]

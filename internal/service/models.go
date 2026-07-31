@@ -159,11 +159,11 @@ type SearchResult struct {
 }
 
 type Dashboard struct {
-	RecentIssues []Issue     `json:"recent_issues"`
-	ActiveIssues []Issue     `json:"active_issues"`
-	TempTasks    []TempTask  `json:"temp_tasks"`
-	Todos        []IssueTodo `json:"todos"`
-	Week         WeekView    `json:"week"`
+	RecentlyImportedIssues []Issue     `json:"recently_imported_issues"`
+	ActiveIssues           []Issue     `json:"active_issues"`
+	TempTasks              []TempTask  `json:"temp_tasks"`
+	Todos                  []IssueTodo `json:"todos"`
+	Week                   WeekView    `json:"week"`
 }
 
 type TodayWorkflow struct {

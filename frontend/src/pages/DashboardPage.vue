@@ -39,14 +39,14 @@
     <n-spin :show="loading">
       <div class="dashboard-grid">
         <div class="card">
-          <div class="card-head"><span class="card-symbol symbol-blue"><History :size="16" /></span><h2>最近更新 Issues</h2></div>
+          <div class="card-head"><span class="card-symbol symbol-blue"><History :size="16" /></span><h2>最近导入 Issues</h2></div>
           <ul class="card-list">
-            <li v-for="issue in data?.recent_issues ?? []" :key="issue.jira_key" class="card-list-item" @click="$router.push(`/issues/${issue.jira_key}`)">
+            <li v-for="issue in data?.recently_imported_issues ?? []" :key="issue.jira_key" class="card-list-item" @click="$router.push(`/issues/${issue.jira_key}`)">
               <span class="issue-chip">{{ issue.jira_key }}</span>
               <span class="item-copy truncate">{{ issue.title }}</span>
               <ChevronRight class="row-arrow" :size="15" />
             </li>
-            <li v-if="(data?.recent_issues ?? []).length === 0" class="text-gray-400 text-sm py-3">暂无数据</li>
+            <li v-if="(data?.recently_imported_issues ?? []).length === 0" class="text-gray-400 text-sm py-3">暂无数据</li>
           </ul>
         </div>
 

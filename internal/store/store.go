@@ -359,7 +359,7 @@ func (s *Store) ListIssues(ctx context.Context, filter service.IssueFilter) ([]s
 	if len(where) > 0 {
 		query += " WHERE " + strings.Join(where, " AND ")
 	}
-	query += " ORDER BY i.updated_at DESC"
+	query += " ORDER BY i.created_at DESC, i.id DESC"
 	if !filter.All {
 		query += " LIMIT ? OFFSET ?"
 		args = append(args, limitOrDefault(filter.Limit), max(filter.Offset, 0))

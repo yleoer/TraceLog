@@ -596,7 +596,7 @@ export namespace service {
 		}
 	}
 	export class Dashboard {
-	    recent_issues: Issue[];
+	    recently_imported_issues: Issue[];
 	    active_issues: Issue[];
 	    temp_tasks: TempTask[];
 	    todos: IssueTodo[];
@@ -608,7 +608,7 @@ export namespace service {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.recent_issues = this.convertValues(source["recent_issues"], Issue);
+	        this.recently_imported_issues = this.convertValues(source["recently_imported_issues"], Issue);
 	        this.active_issues = this.convertValues(source["active_issues"], Issue);
 	        this.temp_tasks = this.convertValues(source["temp_tasks"], TempTask);
 	        this.todos = this.convertValues(source["todos"], IssueTodo);

@@ -28,6 +28,26 @@ func TestListIssuesFiltersByExactJSONTag(t *testing.T) {
 	}
 }
 
+func TestListIssuesSortsByImportTimeByDefault(t *testing.T) {
+	store := newTestStore(t)
+	firstID := insertTestIssue(t, store.db, "GCS-1", "In Progress", `[]`, "")
+	secondID := insertTestIssue(t, store.db, "GCS-2", "In Progress", `[]`, "")
+	if _, err := store.db.Exec(`UPDATE issues SET created_at = ?, updated_at = ? WHERE id = ?`, "2026-06-20T00:00:00Z", "2026-06-30T00:00:00Z", firstID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.db.Exec(`UPDATE issues SET created_at = ?, updated_at = ? WHERE id = ?`, "2026-06-25T00:00:00Z", "2026-06-21T00:00:00Z", secondID); err != nil {
+		t.Fatal(err)
+	}
+
+	issues, err := store.ListIssues(context.Background(), service.IssueFilter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(issues) != 2 || issues[0].JiraKey != "GCS-2" || issues[1].JiraKey != "GCS-1" {
+		t.Fatalf("expected import time descending order, got %#v", issues)
+	}
+}
+
 func TestIssueTagSourcesPersistAndFilterByAggregateTags(t *testing.T) {
 	store := newTestStore(t)
 	created, err := store.CreateIssue(context.Background(), service.Issue{

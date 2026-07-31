@@ -10,9 +10,9 @@ func (s *DashboardService) Dashboard(ctx context.Context) (Dashboard, error) {
 	if err != nil {
 		return Dashboard{}, err
 	}
-	recent := issues
-	if len(recent) > 8 {
-		recent = recent[:8]
+	recentlyImported := issues
+	if len(recentlyImported) > 8 {
+		recentlyImported = recentlyImported[:8]
 	}
 	active := []Issue{}
 	for _, issue := range issues {
@@ -35,7 +35,7 @@ func (s *DashboardService) Dashboard(ctx context.Context) (Dashboard, error) {
 	if err != nil {
 		return Dashboard{}, err
 	}
-	return Dashboard{RecentIssues: recent, ActiveIssues: active, TempTasks: tasks, Todos: todos, Week: week}, nil
+	return Dashboard{RecentlyImportedIssues: recentlyImported, ActiveIssues: active, TempTasks: tasks, Todos: todos, Week: week}, nil
 }
 
 func (s *DashboardService) TodayWorkflow(ctx context.Context) (TodayWorkflow, error) {
