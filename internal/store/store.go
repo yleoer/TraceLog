@@ -374,6 +374,32 @@ func (s *Store) ListIssues(ctx context.Context, filter service.IssueFilter) ([]s
 	return scanIssues(rows)
 }
 
+func (s *Store) ListCustomIssueTags(ctx context.Context) ([]string, error) {
+	rows, err := s.activeRunner().QueryContext(ctx, `
+SELECT tag
+FROM (
+  SELECT DISTINCT TRIM(j.value) AS tag
+  FROM issues i
+  CROSS JOIN json_each(i.custom_tags) AS j
+  WHERE j.type = 'text' AND TRIM(j.value) <> ''
+)
+ORDER BY tag COLLATE NOCASE, tag`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	tags := []string{}
+	for rows.Next() {
+		var tag string
+		if err := rows.Scan(&tag); err != nil {
+			return nil, err
+		}
+		tags = append(tags, tag)
+	}
+	return tags, rows.Err()
+}
+
 func (s *Store) GetIssue(ctx context.Context, jiraKey string) (service.Issue, error) {
 	row := s.activeRunner().QueryRowContext(ctx, `SELECT id, jira_key, title, status, priority, tags, jira_tags, custom_tags, summary_md, background_md, analysis_md, solution_md, actions_md, result_md, todo_md, links_json, started_at, completed_at, created_at, updated_at FROM issues WHERE jira_key = ?`, jiraKey)
 	return scanIssue(row)

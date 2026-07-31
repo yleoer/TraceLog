@@ -48,6 +48,41 @@ func TestListIssuesSortsByImportTimeByDefault(t *testing.T) {
 	}
 }
 
+func TestListCustomIssueTagsReturnsDistinctSortedTags(t *testing.T) {
+	store := newTestStore(t)
+	issues := []service.Issue{
+		{
+			JiraKey:    "GCS-1",
+			Title:      "First issue",
+			Status:     "In Progress",
+			Priority:   "medium",
+			CustomTags: []string{"shared", "frontend", "shared"},
+			CreatedAt:  "2026-06-20T00:00:00Z",
+			UpdatedAt:  "2026-06-20T00:00:00Z",
+		},
+		{
+			JiraKey:    "GCS-2",
+			Title:      "Second issue",
+			Status:     "In Progress",
+			Priority:   "medium",
+			CustomTags: []string{"Backend", "frontend"},
+			CreatedAt:  "2026-06-21T00:00:00Z",
+			UpdatedAt:  "2026-06-21T00:00:00Z",
+		},
+	}
+	for _, issue := range issues {
+		if _, err := store.CreateIssue(context.Background(), issue); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	tags, err := store.ListCustomIssueTags(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertTags(t, tags, "Backend", "frontend", "shared")
+}
+
 func TestIssueTagSourcesPersistAndFilterByAggregateTags(t *testing.T) {
 	store := newTestStore(t)
 	created, err := store.CreateIssue(context.Background(), service.Issue{

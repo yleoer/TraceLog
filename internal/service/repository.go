@@ -6,6 +6,7 @@ import (
 
 type IssueRepository interface {
 	ListIssues(context.Context, IssueFilter) ([]Issue, error)
+	ListCustomIssueTags(context.Context) ([]string, error)
 	GetIssue(context.Context, string) (Issue, error)
 	CreateIssue(context.Context, Issue) (Issue, error)
 	UpdateIssue(context.Context, Issue) (Issue, error)

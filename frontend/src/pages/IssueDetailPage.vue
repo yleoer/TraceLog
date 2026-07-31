@@ -87,7 +87,16 @@
         </div>
         <div class="col-span-full border-b border-gray-100 pb-3">
           <label class="field-label">自定义标签</label>
-          <n-dynamic-tags v-model:value="form.custom_tags" size="small" @update:value="saveManualFieldsSoon" />
+          <n-select
+            v-model:value="form.custom_tags"
+            :options="customTagOptions"
+            multiple
+            filterable
+            tag
+            clearable
+            size="small"
+            @update:value="saveManualFieldsSoon"
+          />
         </div>
         <div v-if="!isNew" class="border-b border-gray-100 pb-3">
           <label class="field-label">开始时间</label>
@@ -211,11 +220,11 @@ import {
   NCheckbox,
   NCollapse,
   NCollapseItem,
-  NDynamicTags,
   NInput,
   NInputGroup,
   NInputGroupLabel,
   NPopconfirm,
+  NSelect,
   NTag,
   useMessage
 } from 'naive-ui'
@@ -244,6 +253,7 @@ const summaryGenerating = ref(false)
 const jiraInput = ref('')
 const events = ref<IssueEvent[]>([])
 const todos = ref<IssueTodo[]>([])
+const existingCustomTags = ref<string[]>([])
 const isNew = computed(() => !route.params.jiraKey)
 let manualSaveTimer: number | undefined
 let manualSaveToken = 0
@@ -317,6 +327,11 @@ const openTodos = computed(() => todos.value.filter((todo) => !todo.done))
 const commentDraftKey = computed(() => form.jira_key ? `tracelog:draft:issue-comment:${form.jira_key}` : '')
 
 const jiraMeta = computed(() => parseJiraMeta(form.background_md))
+const customTagOptions = computed(() =>
+  Array.from(new Set([...existingCustomTags.value, ...form.custom_tags]))
+    .sort((left, right) => left.localeCompare(right))
+    .map((tagValue) => ({ label: tagValue, value: tagValue }))
+)
 const hasJiraData = computed(() => Boolean(form.jira_key && form.title))
 const jiraAddress = computed(() => firstJiraLink(form.links) || (form.jira_key ? `${ATLASSIAN_BASE_URL}/browse/${form.jira_key}` : ''))
 const importedAtText = computed(() => formatDateTime(form.created_at || form.updated_at))
@@ -344,6 +359,14 @@ async function loadComments(jiraKey = form.jira_key) {
 async function loadTodos(jiraKey = form.jira_key) {
   if (!jiraKey) return
   todos.value = await api.listIssueTodos(jiraKey, true)
+}
+
+async function loadCustomTagOptions() {
+  try {
+    existingCustomTags.value = await api.listCustomIssueTags()
+  } catch {
+    // Existing labels are a convenience; creating a new label remains available.
+  }
 }
 
 async function importFromJira() {
@@ -629,7 +652,10 @@ function issueUploadContext(part: string) {
 }
 
 watch(() => route.params.jiraKey, load)
-onMounted(load)
+onMounted(() => {
+  void loadCustomTagOptions()
+  void load()
+})
 onBeforeUnmount(() => {
   void flushManualFields()
 })

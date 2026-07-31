@@ -10,6 +10,10 @@ func (s *IssueService) ListIssues(ctx context.Context, filter IssueFilter) ([]Is
 	return s.repo.ListIssues(ctx, filter)
 }
 
+func (s *IssueService) ListCustomIssueTags(ctx context.Context) ([]string, error) {
+	return s.repo.ListCustomIssueTags(ctx)
+}
+
 func (s *IssueService) GetIssue(ctx context.Context, jiraKey string) (Issue, error) {
 	issue, err := s.repo.GetIssue(ctx, strings.ToUpper(jiraKey))
 	if err != nil {

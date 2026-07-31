@@ -134,6 +134,10 @@ export function InstallUpdate() {
   return window['go']['desktop']['App']['InstallUpdate']();
 }
 
+export function ListCustomIssueTags() {
+  return window['go']['desktop']['App']['ListCustomIssueTags']();
+}
+
 export function ListIssueEvents(arg1) {
   return window['go']['desktop']['App']['ListIssueEvents'](arg1);
 }

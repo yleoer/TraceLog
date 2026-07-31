@@ -69,6 +69,8 @@ export function ImportJiraIssue(arg1:string):Promise<service.Issue>;
 
 export function InstallUpdate():Promise<desktop.UpdateInstallResult>;
 
+export function ListCustomIssueTags():Promise<Array<string>>;
+
 export function ListIssueEvents(arg1:string):Promise<Array<service.IssueEvent>>;
 
 export function ListIssueTodos(arg1:string,arg2:boolean):Promise<Array<service.IssueTodo>>;

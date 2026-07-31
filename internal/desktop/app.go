@@ -157,6 +157,12 @@ func (a *App) ListIssues(filter service.IssueFilter) ([]service.Issue, error) {
 	return a.service.ListIssues(ctx, filter)
 }
 
+func (a *App) ListCustomIssueTags() ([]string, error) {
+	ctx, cancel := a.defaultCallContext()
+	defer cancel()
+	return a.service.ListCustomIssueTags(ctx)
+}
+
 func (a *App) ImportJiraIssue(jiraKey string) (service.Issue, error) {
 	ctx, cancel := a.longCallContext()
 	defer cancel()
