@@ -58,7 +58,7 @@ func (s *WeeklyService) GetWeekView(ctx context.Context, week string) (WeekView,
 		return WeekView{}, err
 	}
 
-	issues, err := s.repo.ListIssuesUpdatedBetween(ctx, start, end)
+	issues, err := s.repo.ListIssuesWithWorkActivityBetween(ctx, start, end)
 	if err != nil {
 		return WeekView{}, err
 	}

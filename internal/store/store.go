@@ -949,6 +949,26 @@ ORDER BY i.updated_at DESC`, start, end, start, end, start, end, start, end)
 	return scanIssues(rows)
 }
 
+func (s *Store) ListIssuesWithWorkActivityBetween(ctx context.Context, start string, end string) ([]service.Issue, error) {
+	rows, err := s.activeRunner().QueryContext(ctx, `
+WITH matched_issues AS (
+  SELECT issue_id AS id FROM issue_events WHERE happened_at >= ? AND happened_at < ?
+  UNION
+  SELECT id FROM issues WHERE started_at >= ? AND started_at < ?
+  UNION
+  SELECT id FROM issues WHERE completed_at >= ? AND completed_at < ?
+)
+SELECT i.id, i.jira_key, i.title, i.status, i.priority, i.tags, i.jira_tags, i.custom_tags, i.summary_md, i.background_md, i.analysis_md, i.solution_md, i.actions_md, i.result_md, i.todo_md, i.links_json, i.started_at, i.completed_at, i.created_at, i.updated_at
+FROM issues i
+JOIN matched_issues m ON m.id = i.id
+ORDER BY i.updated_at DESC`, start, end, start, end, start, end)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanIssues(rows)
+}
+
 func (s *Store) ListEventsBetween(ctx context.Context, start string, end string) ([]service.IssueEvent, error) {
 	rows, err := s.activeRunner().QueryContext(ctx, `SELECT id, issue_id, event_type, content_md, happened_at, created_at, updated_at FROM issue_events WHERE happened_at >= ? AND happened_at < ? ORDER BY happened_at DESC`, start, end)
 	if err != nil {

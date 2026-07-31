@@ -48,6 +48,38 @@ func TestListIssuesSortsByImportTimeByDefault(t *testing.T) {
 	}
 }
 
+func TestListIssuesWithWorkActivityBetweenExcludesImportOnlyIssues(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+	commentedID := insertTestIssue(t, store.db, "GCS-1", "In Progress", `[]`, "")
+	startedID := insertTestIssue(t, store.db, "GCS-2", "In Progress", `[]`, "")
+	completedID := insertTestIssue(t, store.db, "GCS-3", "Done", `[]`, "")
+	insertTestIssue(t, store.db, "GCS-4", "To Do", `[]`, "")
+
+	if _, err := store.db.Exec(`INSERT INTO issue_events (issue_id, event_type, content_md, happened_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`,
+		commentedID, "note", "weekly comment", "2026-06-24T10:00:00Z", "2026-06-24T10:00:00Z", "2026-06-24T10:00:00Z"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.db.Exec(`UPDATE issues SET started_at = ? WHERE id = ?`, "2026-06-25T10:00:00Z", startedID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.db.Exec(`UPDATE issues SET completed_at = ? WHERE id = ?`, "2026-06-26T10:00:00Z", completedID); err != nil {
+		t.Fatal(err)
+	}
+
+	issues, err := store.ListIssuesWithWorkActivityBetween(ctx, "2026-06-23T00:00:00Z", "2026-06-30T00:00:00Z")
+	if err != nil {
+		t.Fatal(err)
+	}
+	keys := map[string]bool{}
+	for _, issue := range issues {
+		keys[issue.JiraKey] = true
+	}
+	if len(keys) != 3 || !keys["GCS-1"] || !keys["GCS-2"] || !keys["GCS-3"] || keys["GCS-4"] {
+		t.Fatalf("expected issues with comments, starts, or completions only, got %#v", issues)
+	}
+}
+
 func TestListCustomIssueTagsReturnsDistinctSortedTags(t *testing.T) {
 	store := newTestStore(t)
 	issues := []service.Issue{

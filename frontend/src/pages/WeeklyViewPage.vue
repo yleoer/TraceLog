@@ -29,56 +29,35 @@
     </div>
 
     <n-spin :show="loading">
-      <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+      <div class="space-y-4">
         <div class="card">
           <h3 class="card-title">{{ week }} Issues</h3>
           <div v-if="!view?.issues?.length" class="empty">暂无</div>
           <div v-for="issue in view?.issues ?? []" :key="issue.jira_key" class="list-row" @click="$router.push(`/issues/${issue.jira_key}`)">
             <span class="font-medium text-gray-900">{{ issue.jira_key }}</span>
             <span class="text-gray-600 truncate">{{ issue.title }}</span>
-            <span class="ml-auto shrink-0"><StatusTag :status="issue.status" :background="issue.background_md" /></span>
+            <span class="ml-auto flex shrink-0 items-center gap-1">
+              <StatusTag :status="issue.status" :background="issue.background_md" />
+              <n-button quaternary circle size="small" :aria-label="`复制 ${issue.jira_key} 和标题`" @click.stop="copyIssueTitle(issue)">
+                <template #icon><Copy :size="14" /></template>
+              </n-button>
+            </span>
           </div>
         </div>
 
-        <div class="card">
+        <div v-if="view?.temp_tasks?.length" class="card">
           <h3 class="card-title">临时需求</h3>
-          <div v-if="!view?.temp_tasks?.length" class="empty">暂无</div>
           <div v-for="task in view?.temp_tasks ?? []" :key="task.id" class="list-row" @click="$router.push(`/temp-tasks/${task.id}`)">
             <span class="text-gray-900">{{ task.title }}</span>
             <span class="ml-auto shrink-0"><StatusTag :status="task.status" :label="tempStatusLabel(task.status)" /></span>
           </div>
         </div>
 
-        <div class="card">
-          <h3 class="card-title">时间线事件</h3>
-          <div v-if="!view?.events?.length" class="empty">暂无</div>
-          <div v-for="event in view?.events ?? []" :key="event.id" class="py-2 border-b border-gray-50 last:border-0">
-            <div class="flex items-center gap-2 mb-1">
-              <span class="text-xs text-gray-400">{{ formatDate(event.happened_at) }}</span>
-              <span class="text-xs text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">{{ eventTypeLabel(event.event_type) }}</span>
-            </div>
-            <MarkdownView :content="event.content_md" />
-          </div>
-        </div>
-
-        <div class="card">
+        <div v-if="view?.todos?.length" class="card">
           <h3 class="card-title">后续 TODO</h3>
-          <div v-if="!view?.todos?.length" class="empty">暂无</div>
           <div v-for="todo in view?.todos ?? []" :key="todo.id" class="list-row" @click="$router.push(`/issues/${todo.jira_key}`)">
             <span :class="todo.done ? 'line-through text-gray-400' : 'text-gray-900'">{{ todo.jira_key }} · {{ todo.content }}</span>
           </div>
-        </div>
-
-        <div class="card">
-          <h3 class="card-title">完成事项</h3>
-          <div v-if="!view?.done?.length" class="empty">暂无</div>
-          <div v-for="item in view?.done ?? []" :key="item" class="py-1.5 text-sm text-gray-700 border-b border-gray-50 last:border-0">{{ item }}</div>
-        </div>
-
-        <div class="card">
-          <h3 class="card-title">进行中事项</h3>
-          <div v-if="!view?.active?.length" class="empty">暂无</div>
-          <div v-for="item in view?.active ?? []" :key="item" class="py-1.5 text-sm text-gray-700 border-b border-gray-50 last:border-0">{{ item }}</div>
         </div>
       </div>
 
@@ -129,14 +108,15 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, onMounted, ref, watch } from 'vue'
 import { NButton, NSelect, NSpin, useMessage } from 'naive-ui'
+import { Copy } from 'lucide-vue-next'
 import { useRoute, useRouter } from 'vue-router'
 import { api, downloadUrl } from '../api/client'
 import MarkdownView from '../components/MarkdownView.vue'
 import StatusTag from '../components/StatusTag.vue'
 import DayWorkPanel from '../components/DayWorkPanel.vue'
 import { tempStatusLabel } from '../utils/tempTaskDisplay'
-import { formatDateTime } from '../utils/datetime'
-import type { WeekBounds, WeekView } from '../types'
+import type { Issue, WeekBounds, WeekView } from '../types'
+import { ClipboardSetText } from '../wailsjs/runtime/runtime'
 
 const MarkdownEditor = defineAsyncComponent(() => import('../components/MarkdownEditor.vue'))
 const route = useRoute()
@@ -330,13 +310,14 @@ function isoWeekToDate(year: number, weekNumber: number) {
   return monday
 }
 
-function formatDate(value: string) {
-  return formatDateTime(value)
-}
-
-function eventTypeLabel(type: string) {
-  if (type === 'note') return '评论'
-  return type || '事件'
+async function copyIssueTitle(issue: Issue) {
+  try {
+    const copied = await ClipboardSetText(`${issue.jira_key} ${issue.title}`)
+    if (!copied) throw new Error('无法写入剪贴板')
+    message.success('已复制 Issue 编号和标题')
+  } catch (error) {
+    message.error((error as Error).message || '复制失败')
+  }
 }
 
 function todayDate() {
