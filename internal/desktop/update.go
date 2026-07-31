@@ -14,20 +14,21 @@ import (
 	"strings"
 	"time"
 
-	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
-
 	"tracelog/internal/updatelog"
 	"tracelog/internal/updater"
 )
 
 const (
-	githubLatestReleaseURL     = "https://api.github.com/repos/yleoer/TraceLog/releases/latest"
-	updateHTTPTimeout          = 60 * time.Second
-	updateDownloadTimeout      = 10 * time.Minute
-	updateInstallerLaunchDelay = 500 * time.Millisecond
-	updateInfoCacheTTL         = 15 * time.Minute
-	devUpdateMessage           = "开发版本不检查更新"
-	updaterExecutableName      = "TraceLogUpdater.exe"
+	githubLatestReleaseURL      = "https://api.github.com/repos/yleoer/TraceLog/releases/latest"
+	updateURLOverrideEnv        = "TRACELOG_UPDATE_URL"
+	updateHTTPTimeout           = 60 * time.Second
+	updateDownloadTimeout       = 10 * time.Minute
+	updateHelperReadyTimeout    = 5 * time.Second
+	updateHelperReadySignal     = "ready"
+	updateInfoCacheTTL          = 15 * time.Minute
+	devUpdateMessage            = "开发版本不检查更新"
+	updaterExecutableName       = "TraceLogUpdater.exe"
+	updateHelperReadyFilePrefix = "TraceLogUpdater-ready-"
 )
 
 var AppVersion = "dev"
@@ -148,13 +149,13 @@ func (a *App) InstallUpdate() (UpdateInstallResult, error) {
 		logger.Printf("update helper launch failed: %v", err)
 		return updateInstallFailure("无法启动更新助手", err, logPath), nil
 	}
-	willQuit := a.quitSoon()
-	logger.Printf("update helper started log=%q app_quit_scheduled=%t", helperLogPath, willQuit)
-	message := "安装包已下载并验证，TraceLog 将退出并安装新版本"
-	if !willQuit {
-		message = "安装包已下载并验证，更新助手会安装新版本"
-	}
-	return UpdateInstallResult{Started: true, Path: helperLogPath, Message: message, WillQuit: willQuit}, nil
+	logger.Printf("update helper is ready log=%q frontend_quit_required=true", helperLogPath)
+	return UpdateInstallResult{
+		Started:  true,
+		Path:     helperLogPath,
+		Message:  "安装包已下载并验证，更新助手已就绪，TraceLog 即将关闭并开始安装",
+		WillQuit: true,
+	}, nil
 }
 
 func (a *App) cacheUpdateInfo(info UpdateInfo) {
@@ -184,22 +185,11 @@ func updateInstallFailure(action string, err error, logPath string) UpdateInstal
 	}
 }
 
-func (a *App) quitSoon() bool {
-	if a.ctx == nil {
-		return false
-	}
-	ctx := a.ctx
-	go func() {
-		time.Sleep(updateInstallerLaunchDelay)
-		wailsruntime.Quit(ctx)
-	}()
-	return true
-}
-
 func fetchUpdateInfo(ctx context.Context, logger *log.Logger) (UpdateInfo, error) {
 	startedAt := time.Now()
-	logger.Printf("release request started method=%s url=%q", http.MethodGet, githubLatestReleaseURL)
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, githubLatestReleaseURL, nil)
+	releaseURL := latestReleaseURL()
+	logger.Printf("release request started method=%s url=%q", http.MethodGet, releaseURL)
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, releaseURL, nil)
 	if err != nil {
 		logger.Printf("release request creation failed: %v", err)
 		return UpdateInfo{}, err
@@ -301,21 +291,85 @@ func startUpdateHelper(installerPath string, logPath string, sessionID string, l
 		return "", err
 	}
 	logger.Printf("current executable resolved path=%q", executablePath)
+	readyPath, err := newUpdateHelperReadyPath()
+	if err != nil {
+		return "", err
+	}
+	defer os.Remove(readyPath)
 	args := []string{
 		"--installer-path", installerPath,
 		"--app-exe", executablePath,
 		"--app-pid", fmt.Sprint(os.Getpid()),
 		"--log-file", logPath,
 		"--session-id", sessionID,
+		"--ready-file", readyPath,
 	}
 	command := exec.Command(helperPath, args...)
-	logger.Printf("starting update helper executable=%q installer=%q app_pid=%d log=%q", helperPath, installerPath, os.Getpid(), logPath)
+	configureUpdateHelperCommand(command)
+	logger.Printf("starting update helper executable=%q installer=%q app_pid=%d log=%q ready=%q", helperPath, installerPath, os.Getpid(), logPath, readyPath)
 	if err := command.Start(); err != nil {
 		return "", err
 	}
 	logger.Printf("update helper process created pid=%d", command.Process.Pid)
 	_ = command.Process.Release()
+	if err := waitForUpdateHelperReady(readyPath, updateHelperReadyTimeout); err != nil {
+		return "", err
+	}
+	logger.Printf("update helper readiness acknowledged path=%q", readyPath)
 	return logPath, nil
+}
+
+func latestReleaseURL() string {
+	if value := strings.TrimSpace(os.Getenv(updateURLOverrideEnv)); value != "" {
+		return value
+	}
+	return githubLatestReleaseURL
+}
+
+func newUpdateHelperReadyPath() (string, error) {
+	dir := filepath.Join(os.TempDir(), "TraceLog", "updater")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", err
+	}
+	file, err := os.CreateTemp(dir, updateHelperReadyFilePrefix+"*.signal")
+	if err != nil {
+		return "", err
+	}
+	path := file.Name()
+	if err := file.Close(); err != nil {
+		_ = os.Remove(path)
+		return "", err
+	}
+	if err := os.Remove(path); err != nil {
+		return "", err
+	}
+	return path, nil
+}
+
+func waitForUpdateHelperReady(path string, timeout time.Duration) error {
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	ticker := time.NewTicker(50 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		content, err := os.ReadFile(path)
+		if err == nil {
+			if strings.TrimSpace(string(content)) == updateHelperReadySignal {
+				return nil
+			}
+			return fmt.Errorf("更新助手就绪信号无效")
+		}
+		if !os.IsNotExist(err) {
+			return fmt.Errorf("读取更新助手就绪信号: %w", err)
+		}
+
+		select {
+		case <-timer.C:
+			return fmt.Errorf("更新助手未在 %s 内就绪", timeout)
+		case <-ticker.C:
+		}
+	}
 }
 
 func prepareUpdateHelper(source string) (string, error) {

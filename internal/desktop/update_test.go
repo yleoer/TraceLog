@@ -129,6 +129,34 @@ func TestCachedUpdateInfoForInstallRejectsExpiredInfo(t *testing.T) {
 	}
 }
 
+func TestLatestReleaseURLUsesTestOverride(t *testing.T) {
+	t.Setenv(updateURLOverrideEnv, "http://127.0.0.1:8080/releases/latest")
+	if got := latestReleaseURL(); got != "http://127.0.0.1:8080/releases/latest" {
+		t.Fatalf("latestReleaseURL() = %q", got)
+	}
+}
+
+func TestWaitForUpdateHelperReady(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "helper.signal")
+	go func() {
+		time.Sleep(20 * time.Millisecond)
+		_ = os.WriteFile(path, []byte(updateHelperReadySignal+"\n"), 0o644)
+	}()
+	if err := waitForUpdateHelperReady(path, time.Second); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestWaitForUpdateHelperReadyRejectsInvalidSignal(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "helper.signal")
+	if err := os.WriteFile(path, []byte("not-ready\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := waitForUpdateHelperReady(path, time.Second); err == nil {
+		t.Fatal("expected invalid readiness signal to fail")
+	}
+}
+
 func TestPrepareUpdateHelperUsesUniqueTemporaryFiles(t *testing.T) {
 	if runtime.GOOS != "windows" {
 		t.Skip("Windows updater helper is only copied on Windows")

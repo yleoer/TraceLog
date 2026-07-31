@@ -297,6 +297,9 @@ async function startInstallUpdate() {
       const type = !result.started ? 'error' : result.will_quit ? 'warning' : 'success'
       message[type](result.message)
     }
+    if (result.started && result.will_quit) {
+      window.setTimeout(() => api.quitForUpdate(), 250)
+    }
   } catch (error) {
     message.error((error as Error).message)
   } finally {

@@ -31,6 +31,7 @@ type options struct {
 	appPID         int
 	logFile        string
 	sessionID      string
+	readyFile      string
 }
 
 func main() {
@@ -57,6 +58,7 @@ func parseOptions() options {
 	flag.IntVar(&opts.appPID, "app-pid", 0, "TraceLog process id")
 	flag.StringVar(&opts.logFile, "log-file", "", "updater log file")
 	flag.StringVar(&opts.sessionID, "session-id", "", "update log session id")
+	flag.StringVar(&opts.readyFile, "ready-file", "", "helper readiness signal path")
 	flag.Parse()
 	if opts.sessionID == "" {
 		opts.sessionID = updatelog.NewSessionID()
@@ -94,12 +96,22 @@ func run(ctx context.Context, opts options, logger *log.Logger) error {
 	} else {
 		logger.Printf("using verified installer path=%q size=%d", path, info.Size())
 	}
+	if err := writeReadySignal(opts.readyFile); err != nil {
+		return err
+	}
+	if opts.readyFile != "" {
+		logger.Printf("helper readiness signal written path=%q", opts.readyFile)
+	}
 
 	if err := waitForProcessExit(opts.appPID, defaultWaitTimeout, logger); err != nil {
 		return err
 	}
 
-	if err := runInstaller(ctx, path, logger); err != nil {
+	installDir, err := filepath.Abs(filepath.Dir(opts.appExe))
+	if err != nil {
+		return fmt.Errorf("resolve install directory: %w", err)
+	}
+	if err := runInstaller(ctx, path, installDir, logger); err != nil {
 		return err
 	}
 
@@ -108,7 +120,6 @@ func run(ctx context.Context, opts options, logger *log.Logger) error {
 	} else {
 		logger.Printf("download cleanup completed")
 	}
-	cleanupSelf(logger)
 	pid, err := restartApp(opts.appExe)
 	if err != nil {
 		logger.Printf("restart failed: %v", err)
@@ -120,16 +131,16 @@ func run(ctx context.Context, opts options, logger *log.Logger) error {
 	return nil
 }
 
-func runInstaller(ctx context.Context, path string, logger *log.Logger) error {
+func runInstaller(ctx context.Context, path, installDir string, logger *log.Logger) error {
 	ctx, cancel := context.WithTimeout(ctx, installerTimeout)
 	defer cancel()
 	startedAt := time.Now()
-	logger.Printf("installer phase started path=%q timeout=%s", path, installerTimeout)
+	logger.Printf("installer phase started path=%q install_dir=%q timeout=%s", path, installDir, installerTimeout)
 
 	var command *exec.Cmd
 	switch runtime.GOOS {
 	case "windows":
-		command = exec.CommandContext(ctx, path)
+		command = exec.CommandContext(ctx, path, nsisInstallArguments(installDir)...)
 	case "darwin":
 		command = exec.CommandContext(ctx, "open", path)
 	case "linux":
@@ -147,25 +158,9 @@ func runInstaller(ctx context.Context, path string, logger *log.Logger) error {
 	return nil
 }
 
-func cleanupSelf(logger *log.Logger) {
-	if runtime.GOOS != "windows" {
-		logger.Printf("helper self-cleanup skipped platform=%s", runtime.GOOS)
-		return
-	}
-	path, err := os.Executable()
-	if err != nil {
-		logger.Printf("helper self-cleanup path resolution failed: %v", err)
-		return
-	}
-	logger.Printf("helper self-cleanup scheduling path=%q", path)
-	script := fmt.Sprintf("Start-Sleep -Seconds 3; Remove-Item -LiteralPath '%s' -Force -ErrorAction SilentlyContinue", strings.ReplaceAll(path, "'", "''"))
-	command := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-ExecutionPolicy", "Bypass", "-Command", script)
-	if err := command.Start(); err != nil {
-		logger.Printf("cleanup self failed: %v", err)
-		return
-	}
-	logger.Printf("helper self-cleanup process created pid=%d", command.Process.Pid)
-	_ = command.Process.Release()
+func nsisInstallArguments(installDir string) []string {
+	// NSIS requires /D to be the final installer argument.
+	return []string{"/S", "/D=" + installDir}
 }
 
 func restartApp(path string) (int, error) {
@@ -180,6 +175,36 @@ func restartApp(path string) (int, error) {
 	pid := command.Process.Pid
 	_ = command.Process.Release()
 	return pid, nil
+}
+
+func writeReadySignal(path string) error {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return nil
+	}
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return fmt.Errorf("创建更新助手就绪目录: %w", err)
+	}
+	file, err := os.CreateTemp(dir, filepath.Base(path)+".tmp-*")
+	if err != nil {
+		return fmt.Errorf("创建更新助手就绪信号: %w", err)
+	}
+	tempPath := file.Name()
+	if _, err := file.WriteString("ready\n"); err != nil {
+		_ = file.Close()
+		_ = os.Remove(tempPath)
+		return fmt.Errorf("写入更新助手就绪信号: %w", err)
+	}
+	if err := file.Close(); err != nil {
+		_ = os.Remove(tempPath)
+		return fmt.Errorf("关闭更新助手就绪信号: %w", err)
+	}
+	if err := os.Rename(tempPath, path); err != nil {
+		_ = os.Remove(tempPath)
+		return fmt.Errorf("提交更新助手就绪信号: %w", err)
+	}
+	return nil
 }
 
 func waitForProcessExit(pid int, timeout time.Duration, logger *log.Logger) error {

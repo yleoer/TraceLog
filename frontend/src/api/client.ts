@@ -26,6 +26,7 @@ import type {
 } from '../types'
 import * as DesktopApp from '../wailsjs/go/desktop/App'
 import { desktop, service } from '../wailsjs/go/models'
+import { Quit } from '../wailsjs/runtime/runtime'
 
 type QueryParams = Record<string, string | number | undefined>
 type OkResponse = { ok: boolean }
@@ -124,6 +125,7 @@ export const api = {
     nativeCall(() => DesktopApp.LogTempoTime(service.LogTimeRequest.createFrom(request))) as Promise<LogTimeResult>,
   getUpdateInfo: () => nativeCall(() => DesktopApp.GetUpdateInfo()) as Promise<UpdateInfo>,
   installUpdate: () => nativeCall(() => DesktopApp.InstallUpdate()) as Promise<UpdateInstallResult>,
+  quitForUpdate: () => Quit(),
   listIssues: (params: QueryParams) => nativeCall(() => DesktopApp.ListIssues(service.IssueFilter.createFrom(issueFilter(params)))) as Promise<Issue[]>,
   listCustomIssueTags: () => nativeCall(() => DesktopApp.ListCustomIssueTags()) as Promise<string[]>,
   importJiraIssue: (jiraKey: string) => nativeCall(() => DesktopApp.ImportJiraIssue(jiraKey)) as Promise<Issue>,

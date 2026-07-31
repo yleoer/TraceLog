@@ -110,6 +110,8 @@ workflow 会从根目录构建 Wails 应用并上传：
 - `DEEPSEEK_API_KEY`
 - `DEEPSEEK_MODEL`
 
+`TRACELOG_UPDATE_URL` 仅用于本地升级验收：它会覆盖 GitHub Release 查询地址，生产环境不应设置此变量。
+
 Jira 和 AI 凭据也可以在 Settings 页面保存。
 
 ## 界面说明
@@ -132,3 +134,15 @@ wails build -clean -debug -nopackage
 ```
 
 如果 `wails build` 在 Windows 上提示 `TraceLog-dev.exe` 被占用，请先关闭正在运行的 TraceLog 窗口后再执行。
+
+### Windows 在线升级验收
+
+每个 Windows 发布版本都应在发布前执行一次真实的 `rc.1 -> rc.2` NSIS 升级。脚本会构建两个安装包，在临时目录安装旧版本、启动本地更新源、自动触发升级，并验证进程退出、安装器结果、重启、二进制哈希、更新助手和升级日志。
+
+前提是本机已安装 Wails、NSIS 和 WebView2 开发依赖；建议在 Windows Sandbox 或虚拟机执行。脚本使用用户级测试安装器和临时数据目录，不会覆盖正式安装。
+
+```powershell
+.\scripts\test-upgrade.ps1 -KeepArtifacts
+```
+
+通过 `-MakensisPath` 可以指定便携版或非标准位置的 `makensis.exe`，通过 `-RunRoot` 可以指定测试证据目录。测试失败时临时目录会保留，脚本会输出证据路径；成功后加 `-KeepArtifacts` 也可保留日志和两个测试安装包。

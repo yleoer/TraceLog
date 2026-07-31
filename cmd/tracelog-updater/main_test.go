@@ -50,3 +50,31 @@ func TestNewLoggerPersistsHelperSession(t *testing.T) {
 		t.Fatalf("unexpected helper log content: %q", text)
 	}
 }
+
+func TestWriteReadySignal(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "ready", "helper.signal")
+	if err := writeReadySignal(path); err != nil {
+		t.Fatal(err)
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(content) != "ready\n" {
+		t.Fatalf("unexpected readiness signal: %q", content)
+	}
+}
+
+func TestNSISInstallArgumentsTargetCurrentInstallDirectory(t *testing.T) {
+	installDir := `C:\Users\tester\AppData\Local\TraceLog`
+	arguments := nsisInstallArguments(installDir)
+	want := []string{"/S", "/D=" + installDir}
+	if len(arguments) != len(want) {
+		t.Fatalf("unexpected installer arguments: %#v", arguments)
+	}
+	for index := range want {
+		if arguments[index] != want[index] {
+			t.Fatalf("argument %d = %q, want %q", index, arguments[index], want[index])
+		}
+	}
+}

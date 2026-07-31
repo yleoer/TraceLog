@@ -30,6 +30,10 @@ Unicode true
 ####
 ## !define REQUEST_EXECUTION_LEVEL "admin"            # Default "admin"  see also https://nsis.sourceforge.io/Docs/Chapter4.html
 ####
+!ifdef TRACELOG_E2E_USER_INSTALL
+!define REQUEST_EXECUTION_LEVEL "user"
+!endif
+
 ## Include the wails tools
 ####
 !include "wails_tools.nsh"
