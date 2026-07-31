@@ -115,6 +115,12 @@ func (a *App) Today() (service.TodayWorkflow, error) {
 	return a.service.TodayWorkflow(ctx)
 }
 
+func (a *App) GetMonthGantt(month string) (service.MonthGanttView, error) {
+	ctx, cancel := a.defaultCallContext()
+	defer cancel()
+	return a.service.GetMonthGantt(ctx, month)
+}
+
 func (a *App) GetSettings() (service.AppSettings, error) {
 	ctx, cancel := a.defaultCallContext()
 	defer cancel()

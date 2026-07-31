@@ -51,6 +51,8 @@ export function GenerateWeekSummary(arg1:string):Promise<service.WeeklyLog>;
 
 export function GetIssue(arg1:string):Promise<service.Issue>;
 
+export function GetMonthGantt(arg1:string):Promise<service.MonthGanttView>;
+
 export function GetSettings():Promise<service.AppSettings>;
 
 export function GetTempTask(arg1:number):Promise<service.TempTask>;

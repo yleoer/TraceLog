@@ -98,6 +98,10 @@ export function GetIssue(arg1) {
   return window['go']['desktop']['App']['GetIssue'](arg1);
 }
 
+export function GetMonthGantt(arg1) {
+  return window['go']['desktop']['App']['GetMonthGantt'](arg1);
+}
+
 export function GetSettings() {
   return window['go']['desktop']['App']['GetSettings']();
 }

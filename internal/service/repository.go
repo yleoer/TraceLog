@@ -54,6 +54,10 @@ type TempTaskEventRepository interface {
 	DeleteTempTaskEvent(context.Context, int64) error
 }
 
+type GanttRepository interface {
+	ListMonthGanttItemsBetween(context.Context, string, string) ([]MonthGanttItem, error)
+}
+
 type WeeklyRepository interface {
 	GetWeeklyLog(context.Context, string) (WeeklyLog, error)
 	UpsertWeeklyLog(context.Context, WeeklyLog) (WeeklyLog, error)
@@ -100,6 +104,7 @@ type Repository interface {
 	IssueEventRepository
 	TempTaskRepository
 	TempTaskEventRepository
+	GanttRepository
 	WeeklyRepository
 	DayRepository
 	TimeRepository

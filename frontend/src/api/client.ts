@@ -8,6 +8,7 @@ import type {
   IssueTodo,
   LogTimeRequest,
   LogTimeResult,
+  MonthGanttView,
   SearchResult,
   TempTask,
   TempTaskEvent,
@@ -112,6 +113,7 @@ async function uploadImage(file: File, context = '') {
 export const api = {
   dashboard: () => nativeCall(() => DesktopApp.Dashboard()) as Promise<Dashboard>,
   today: () => nativeCall(() => DesktopApp.Today()) as Promise<TodayWorkflow>,
+  getMonthGantt: (month = '') => nativeCall(() => DesktopApp.GetMonthGantt(month)) as Promise<MonthGanttView>,
   getSettings: () => nativeCall(() => DesktopApp.GetSettings()) as Promise<AppSettings>,
   updateSettings: (settings: Partial<AppSettings>) =>
     nativeCall(() => DesktopApp.UpdateSettings(service.AppSettings.createFrom(settings))) as Promise<AppSettings>,

@@ -119,6 +119,7 @@ import type { WorkThemeKey } from '../composables/useWorkTheme'
 import {
   Activity,
   CalendarDays,
+  CalendarRange,
   Check,
   ChevronDown,
   ClipboardList,
@@ -150,6 +151,7 @@ const navItems = [
   { path: '/issues', label: 'Issues', icon: ClipboardList },
   { path: '/temp-tasks', label: '临时需求', icon: FileText },
   { path: '/weeks', label: '周视图', icon: CalendarDays },
+  { path: '/gantt', label: '甘特图', icon: CalendarRange },
   { path: '/search', label: '全局搜索', icon: Search },
   { path: '/settings', label: '设置', icon: Settings }
 ]
@@ -160,6 +162,7 @@ const activeKey = computed(() => {
   if (route.path.startsWith('/time')) return '/time'
   if (route.path.startsWith('/temp-tasks')) return '/temp-tasks'
   if (route.path.startsWith('/weeks')) return '/weeks'
+  if (route.path.startsWith('/gantt')) return '/gantt'
   if (route.path.startsWith('/search')) return '/search'
   if (route.path.startsWith('/settings')) return '/settings'
   return '/'

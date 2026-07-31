@@ -784,8 +784,95 @@ export namespace service {
 		    return a;
 		}
 	}
+	export class MonthGanttPeriod {
+	    started_at: string;
+	    completed_at: string;
+
+	    static createFrom(source: any = {}) {
+	        return new MonthGanttPeriod(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.started_at = source["started_at"];
+	        this.completed_at = source["completed_at"];
+	    }
+	}
+	export class MonthGanttItem {
+	    id: number;
+	    source: string;
+	    jira_key: string;
+	    title: string;
+	    status: string;
+	    periods: MonthGanttPeriod[];
+
+	    static createFrom(source: any = {}) {
+	        return new MonthGanttItem(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.source = source["source"];
+	        this.jira_key = source["jira_key"];
+	        this.title = source["title"];
+	        this.status = source["status"];
+	        this.periods = this.convertValues(source["periods"], MonthGanttPeriod);
+	    }
 	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+
+	export class MonthGanttView {
+	    month: string;
+	    items: MonthGanttItem[];
+
+	    static createFrom(source: any = {}) {
+	        return new MonthGanttView(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.month = source["month"];
+	        this.items = this.convertValues(source["items"], MonthGanttItem);
+	    }
 	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+
+
 	export class SearchResult {
 	    type: string;
 	    id: string;

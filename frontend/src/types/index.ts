@@ -84,6 +84,25 @@ export interface TempTask {
   updated_at: string
 }
 
+export interface MonthGanttView {
+  month: string
+  items: MonthGanttItem[]
+}
+
+export interface MonthGanttItem {
+  id: number
+  source: string
+  jira_key: string
+  title: string
+  status: string
+  periods: MonthGanttPeriod[]
+}
+
+export interface MonthGanttPeriod {
+  started_at: string
+  completed_at: string
+}
+
 export interface WeeklyLog {
   id: number
   week: string

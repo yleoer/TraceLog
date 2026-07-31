@@ -86,6 +86,25 @@ type TempTask struct {
 	UpdatedAt        string   `json:"updated_at"`
 }
 
+type MonthGanttView struct {
+	Month string           `json:"month"`
+	Items []MonthGanttItem `json:"items"`
+}
+
+type MonthGanttItem struct {
+	ID      int64              `json:"id"`
+	Source  string             `json:"source"`
+	JiraKey string             `json:"jira_key"`
+	Title   string             `json:"title"`
+	Status  string             `json:"status"`
+	Periods []MonthGanttPeriod `json:"periods"`
+}
+
+type MonthGanttPeriod struct {
+	StartedAt   string `json:"started_at"`
+	CompletedAt string `json:"completed_at"`
+}
+
 type WeeklyLog struct {
 	ID         int64  `json:"id"`
 	Week       string `json:"week"`

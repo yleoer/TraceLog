@@ -80,6 +80,45 @@ func TestListIssuesWithWorkActivityBetweenExcludesImportOnlyIssues(t *testing.T)
 	}
 }
 
+func TestListMonthGanttItemsBetweenGroupsOverlappingWorkPeriods(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+	legacyIssueID := insertTestIssue(t, store.db, "GCS-1", "Done", `[]`, "")
+	periodIssueID := insertTestIssue(t, store.db, "GCS-2", "In Progress", `[]`, "")
+	taskID := insertTestTempTask(t, store.db)
+
+	if _, err := store.db.Exec(`UPDATE issues SET started_at = ?, completed_at = ? WHERE id = ?`, "2026-06-30T09:00:00Z", "2026-07-02T17:00:00Z", legacyIssueID); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.ReplaceIssueWorkPeriods(ctx, periodIssueID, []service.IssueWorkPeriod{
+		{StartedAt: "2026-06-28T09:00:00Z", CompletedAt: "2026-07-03T17:00:00Z"},
+		{StartedAt: "2026-07-20T09:00:00Z"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.db.Exec(`UPDATE temp_tasks SET started_at = ?, completed_at = ? WHERE id = ?`, "2026-07-10T09:00:00Z", "2026-07-12T17:00:00Z", taskID); err != nil {
+		t.Fatal(err)
+	}
+
+	items, err := store.ListMonthGanttItemsBetween(ctx, "2026-06-30T16:00:00Z", "2026-07-31T16:00:00Z")
+	if err != nil {
+		t.Fatal(err)
+	}
+	byKey := map[string]service.MonthGanttItem{}
+	for _, item := range items {
+		byKey[item.Source+":"+item.JiraKey+":"+strconv.FormatInt(item.ID, 10)] = item
+	}
+	legacy := byKey["issue:GCS-1:"+strconv.FormatInt(legacyIssueID, 10)]
+	period := byKey["issue:GCS-2:"+strconv.FormatInt(periodIssueID, 10)]
+	task := byKey["temp_task::"+strconv.FormatInt(taskID, 10)]
+	if len(items) != 3 || len(legacy.Periods) != 1 || len(period.Periods) != 2 || len(task.Periods) != 1 {
+		t.Fatalf("expected legacy issue, grouped periods, and temp task, got %#v", items)
+	}
+	if period.Periods[1].CompletedAt != "" {
+		t.Fatalf("expected active work period to remain open, got %#v", period.Periods[1])
+	}
+}
+
 func TestListCustomIssueTagsReturnsDistinctSortedTags(t *testing.T) {
 	store := newTestStore(t)
 	issues := []service.Issue{

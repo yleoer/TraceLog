@@ -8,6 +8,7 @@ const IssueDetailPage = () => import('../pages/IssueDetailPage.vue')
 const TempTaskListPage = () => import('../pages/TempTaskListPage.vue')
 const TempTaskDetailPage = () => import('../pages/TempTaskDetailPage.vue')
 const WeeklyViewPage = () => import('../pages/WeeklyViewPage.vue')
+const GanttPage = () => import('../pages/GanttPage.vue')
 const SearchPage = () => import('../pages/SearchPage.vue')
 const SettingsPage = () => import('../pages/SettingsPage.vue')
 
@@ -24,6 +25,7 @@ const router = createRouter({
     { path: '/temp-tasks/new', component: TempTaskDetailPage },
     { path: '/temp-tasks/:id', component: TempTaskDetailPage },
     { path: '/weeks/:week?', component: WeeklyViewPage },
+    { path: '/gantt', component: GanttPage },
     { path: '/search', component: SearchPage },
     { path: '/settings', component: SettingsPage }
   ]

@@ -426,6 +426,58 @@ func (s *Store) ListIssueWorkPeriods(ctx context.Context, issueID int64) ([]serv
 	return periods, rows.Err()
 }
 
+func (s *Store) ListMonthGanttItemsBetween(ctx context.Context, start string, end string) ([]service.MonthGanttItem, error) {
+	if err := s.ensureIssueWorkPeriodsTable(ctx); err != nil {
+		return nil, err
+	}
+	rows, err := s.activeRunner().QueryContext(ctx, `
+WITH month_periods AS (
+  SELECT 'issue' AS source, i.id AS item_id, i.jira_key, i.title, i.status, p.started_at, p.completed_at
+  FROM issue_work_periods p
+  JOIN issues i ON i.id = p.issue_id
+  WHERE p.started_at <> '' AND p.started_at < ?
+    AND (p.completed_at = '' OR p.completed_at > ?)
+  UNION ALL
+  SELECT 'issue', i.id, i.jira_key, i.title, i.status, i.started_at, i.completed_at
+  FROM issues i
+  WHERE i.started_at <> ''
+    AND NOT EXISTS (SELECT 1 FROM issue_work_periods p WHERE p.issue_id = i.id)
+    AND i.started_at < ?
+    AND (i.completed_at = '' OR i.completed_at > ?)
+  UNION ALL
+  SELECT 'temp_task', t.id, '', t.title, t.status, t.started_at, t.completed_at
+  FROM temp_tasks t
+  WHERE t.started_at <> '' AND t.started_at < ?
+    AND (t.completed_at = '' OR t.completed_at > ?)
+)
+SELECT source, item_id, jira_key, title, status, started_at, completed_at
+FROM month_periods
+ORDER BY started_at ASC, source ASC, title COLLATE NOCASE`, end, start, end, start, end, start)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := []service.MonthGanttItem{}
+	indexes := map[string]int{}
+	for rows.Next() {
+		var item service.MonthGanttItem
+		var period service.MonthGanttPeriod
+		if err := rows.Scan(&item.Source, &item.ID, &item.JiraKey, &item.Title, &item.Status, &period.StartedAt, &period.CompletedAt); err != nil {
+			return nil, err
+		}
+		key := fmt.Sprintf("%s:%d", item.Source, item.ID)
+		if index, ok := indexes[key]; ok {
+			items[index].Periods = append(items[index].Periods, period)
+			continue
+		}
+		item.Periods = []service.MonthGanttPeriod{period}
+		indexes[key] = len(items)
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
 func (s *Store) ReplaceIssueWorkPeriods(ctx context.Context, issueID int64, periods []service.IssueWorkPeriod) error {
 	return s.withTx(ctx, func(tx *sql.Tx) error {
 		if _, err := tx.ExecContext(ctx, issueWorkPeriodsSchema); err != nil {
