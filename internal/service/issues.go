@@ -58,14 +58,14 @@ func (s *IssueService) CreateIssue(ctx context.Context, issue Issue) (Issue, err
 }
 
 func (s *IssueService) UpdateIssue(ctx context.Context, jiraKey string, issue Issue) (Issue, error) {
-	return s.updateIssue(ctx, jiraKey, issue, nil)
+	return s.updateIssue(ctx, jiraKey, issue, nil, false)
 }
 
 func (s *IssueService) UpdateIssueWithWorkPeriods(ctx context.Context, jiraKey string, issue Issue, workPeriods []IssueWorkPeriod) (Issue, error) {
-	return s.updateIssue(ctx, jiraKey, issue, &workPeriods)
+	return s.updateIssue(ctx, jiraKey, issue, &workPeriods, true)
 }
 
-func (s *IssueService) updateIssue(ctx context.Context, jiraKey string, issue Issue, workPeriods *[]IssueWorkPeriod) (Issue, error) {
+func (s *IssueService) updateIssue(ctx context.Context, jiraKey string, issue Issue, workPeriods *[]IssueWorkPeriod, updateJiraTags bool) (Issue, error) {
 	existing, err := s.GetIssue(ctx, jiraKey)
 	if err != nil {
 		return Issue{}, err
@@ -76,6 +76,9 @@ func (s *IssueService) updateIssue(ctx context.Context, jiraKey string, issue Is
 	issue.UpdatedAt = nowString()
 	issue.Title = strings.TrimSpace(issue.Title)
 	issue.Status = strings.TrimSpace(issue.Status)
+	if !updateJiraTags {
+		issue.JiraTags = existing.JiraTags
+	}
 	defaultIssueFields(&issue)
 	if err := validateIssue(issue, false); err != nil {
 		return Issue{}, err

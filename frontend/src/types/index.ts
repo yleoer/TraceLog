@@ -11,6 +11,8 @@ export interface Issue {
   status: string
   priority: string
   tags: string[]
+  jira_tags: string[]
+  custom_tags: string[]
   summary_md: string
   background_md: string
   analysis_md: string

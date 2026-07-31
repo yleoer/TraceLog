@@ -332,6 +332,67 @@ func TestCreateIssueRollsBackWhenIndexingFails(t *testing.T) {
 	}
 }
 
+func TestUpdateIssuePreservesJiraTagsAndUpdatesCustomTags(t *testing.T) {
+	repo := &issueUpdateRepo{issue: Issue{
+		ID:         1,
+		JiraKey:    "GCS-1",
+		Title:      "Existing issue",
+		Status:     "In Progress",
+		Priority:   "medium",
+		JiraTags:   []string{"jira-original"},
+		CustomTags: []string{"personal"},
+		Tags:       []string{"jira-original", "personal"},
+		CreatedAt:  "2026-06-23T00:00:00Z",
+	}}
+	svc := New(repo, nil, nil)
+
+	updated, err := svc.UpdateIssue(context.Background(), "GCS-1", Issue{
+		Title:      "Edited issue",
+		Status:     "In Progress",
+		Priority:   "medium",
+		JiraTags:   []string{"should-not-replace"},
+		CustomTags: []string{"personal", "review"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertIssueTags(t, updated.JiraTags, "jira-original")
+	assertIssueTags(t, updated.CustomTags, "personal", "review")
+	assertIssueTags(t, updated.Tags, "jira-original", "personal", "review")
+}
+
+func TestUpdateIssueWithWorkPeriodsReplacesJiraTags(t *testing.T) {
+	repo := &issueUpdateRepo{issue: Issue{
+		ID:         1,
+		JiraKey:    "GCS-1",
+		Title:      "Existing issue",
+		Status:     "In Progress",
+		Priority:   "medium",
+		JiraTags:   []string{"jira-original"},
+		CustomTags: []string{"personal"},
+		Tags:       []string{"jira-original", "personal"},
+		CreatedAt:  "2026-06-23T00:00:00Z",
+	}}
+	svc := New(repo, nil, nil)
+
+	updated, err := svc.UpdateIssueWithWorkPeriods(context.Background(), "GCS-1", Issue{
+		Title:      "Refreshed issue",
+		Status:     "Done",
+		Priority:   "high",
+		JiraTags:   []string{"jira-new"},
+		CustomTags: []string{"personal"},
+	}, []IssueWorkPeriod{{StartedAt: "2026-06-23T09:00:00Z"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertIssueTags(t, updated.JiraTags, "jira-new")
+	assertIssueTags(t, updated.CustomTags, "personal")
+	assertIssueTags(t, updated.Tags, "jira-new", "personal")
+	if len(updated.WorkPeriods) != 1 || updated.WorkPeriods[0].StartedAt != "2026-06-23T09:00:00Z" {
+		t.Fatalf("expected refreshed work periods, got %#v", updated.WorkPeriods)
+	}
+}
+
 func TestUpdateSettingsFetchesTempoAuthorWhenTokenChanges(t *testing.T) {
 	var calls int
 	var authErr string
@@ -479,6 +540,41 @@ type rollbackRepo struct {
 	createdActivities int
 	indexErr          error
 	nextID            int64
+}
+
+type issueUpdateRepo struct {
+	Repository
+	issue   Issue
+	periods []IssueWorkPeriod
+}
+
+func (repo *issueUpdateRepo) GetIssue(_ context.Context, _ string) (Issue, error) {
+	return repo.issue, nil
+}
+
+func (repo *issueUpdateRepo) ListIssueWorkPeriods(_ context.Context, _ int64) ([]IssueWorkPeriod, error) {
+	return append([]IssueWorkPeriod(nil), repo.periods...), nil
+}
+
+func (repo *issueUpdateRepo) UpdateIssue(_ context.Context, issue Issue) (Issue, error) {
+	repo.issue = issue
+	return issue, nil
+}
+
+func (repo *issueUpdateRepo) ReplaceIssueWorkPeriods(_ context.Context, _ int64, periods []IssueWorkPeriod) error {
+	repo.periods = append([]IssueWorkPeriod(nil), periods...)
+	return nil
+}
+
+func (repo *issueUpdateRepo) UpsertSearchIndex(_ context.Context, _ string, _ string, _ string, _ string, _ string) error {
+	return nil
+}
+
+func assertIssueTags(t *testing.T, actual []string, expected ...string) {
+	t.Helper()
+	if strings.Join(actual, ",") != strings.Join(expected, ",") {
+		t.Fatalf("expected tags %#v, got %#v", expected, actual)
+	}
 }
 
 func (repo *rollbackRepo) WithTransaction(ctx context.Context, fn func(Repository) error) error {

@@ -13,6 +13,8 @@ type Issue struct {
 	Status       string            `json:"status"`
 	Priority     string            `json:"priority"`
 	Tags         []string          `json:"tags"`
+	JiraTags     []string          `json:"jira_tags"`
+	CustomTags   []string          `json:"custom_tags"`
 	SummaryMD    string            `json:"summary_md"`
 	BackgroundMD string            `json:"background_md"`
 	AnalysisMD   string            `json:"analysis_md"`

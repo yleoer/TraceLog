@@ -28,6 +28,108 @@ func TestListIssuesFiltersByExactJSONTag(t *testing.T) {
 	}
 }
 
+func TestIssueTagSourcesPersistAndFilterByAggregateTags(t *testing.T) {
+	store := newTestStore(t)
+	created, err := store.CreateIssue(context.Background(), service.Issue{
+		JiraKey:    "GCS-1",
+		Title:      "Test issue",
+		Status:     "In Progress",
+		Priority:   "medium",
+		JiraTags:   []string{"backend", "shared", "backend"},
+		CustomTags: []string{"personal", "shared", "  focus  "},
+		CreatedAt:  "2026-06-23T00:00:00Z",
+		UpdatedAt:  "2026-06-23T00:00:00Z",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	issue, err := store.GetIssue(context.Background(), created.JiraKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertTags(t, issue.JiraTags, "backend", "shared")
+	assertTags(t, issue.CustomTags, "personal", "shared", "focus")
+	assertTags(t, issue.Tags, "backend", "shared", "personal", "focus")
+
+	for _, tag := range []string{"backend", "personal", "focus"} {
+		issues, err := store.ListIssues(context.Background(), service.IssueFilter{Tag: tag})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(issues) != 1 || issues[0].JiraKey != created.JiraKey {
+			t.Fatalf("expected aggregate tag %q to find %s, got %#v", tag, created.JiraKey, issues)
+		}
+	}
+
+	issue.JiraTags = []string{"platform"}
+	issue.CustomTags = []string{"personal", "review"}
+	updated, err := store.UpdateIssue(context.Background(), issue)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertTags(t, updated.JiraTags, "platform")
+	assertTags(t, updated.CustomTags, "personal", "review")
+	assertTags(t, updated.Tags, "platform", "personal", "review")
+}
+
+func TestMigrateLegacyIssueTagsToCustomTagSources(t *testing.T) {
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = db.Close()
+	})
+	if _, err := db.Exec(`
+CREATE TABLE issues (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  tags TEXT NOT NULL DEFAULT '[]'
+);
+CREATE TABLE app_schema_meta (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
+CREATE TABLE issue_tags (
+  issue_id INTEGER NOT NULL,
+  tag TEXT NOT NULL,
+  PRIMARY KEY (issue_id, tag)
+);
+INSERT INTO issues (tags) VALUES ('["legacy-jira", "personal", "personal"]');`); err != nil {
+		t.Fatal(err)
+	}
+
+	store := New(db)
+	if err := store.ensureIssueTagSourceColumns(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.migrateLegacyIssueTags(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	var tags, jiraTags, customTags string
+	if err := db.QueryRow(`SELECT tags, jira_tags, custom_tags FROM issues WHERE id = 1`).Scan(&tags, &jiraTags, &customTags); err != nil {
+		t.Fatal(err)
+	}
+	if tags != `["legacy-jira","personal"]` || jiraTags != `[]` || customTags != `["legacy-jira","personal"]` {
+		t.Fatalf("expected legacy tags to become custom tags, got tags=%s jira=%s custom=%s", tags, jiraTags, customTags)
+	}
+	var indexedTags string
+	if err := db.QueryRow(`SELECT group_concat(tag, ',') FROM issue_tags WHERE issue_id = 1 ORDER BY tag`).Scan(&indexedTags); err != nil {
+		t.Fatal(err)
+	}
+	if indexedTags != "legacy-jira,personal" {
+		t.Fatalf("expected migrated aggregate tags in filter index, got %q", indexedTags)
+	}
+	version, err := store.metaValue(context.Background(), "issue_tag_sources_version")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if version != "1" {
+		t.Fatalf("expected migration version 1, got %q", version)
+	}
+}
+
 func TestListIssuesSearchUsesFTSIndex(t *testing.T) {
 	store := newTestStore(t)
 	issueID := insertTestIssue(t, store.db, "GCS-1", "In Progress", `["frontend"]`, "contains indexed keyword")
@@ -382,6 +484,8 @@ CREATE TABLE issues (
   status TEXT NOT NULL,
   priority TEXT NOT NULL,
   tags TEXT NOT NULL DEFAULT '[]',
+  jira_tags TEXT NOT NULL DEFAULT '[]',
+  custom_tags TEXT NOT NULL DEFAULT '[]',
   summary_md TEXT NOT NULL DEFAULT '',
   background_md TEXT NOT NULL DEFAULT '',
   analysis_md TEXT NOT NULL DEFAULT '',
@@ -540,6 +644,13 @@ func insertTestIssue(t *testing.T, db *sql.DB, jiraKey string, status string, ta
 		}
 	}
 	return id
+}
+
+func assertTags(t *testing.T, actual []string, expected ...string) {
+	t.Helper()
+	if strings.Join(actual, ",") != strings.Join(expected, ",") {
+		t.Fatalf("expected tags %#v, got %#v", expected, actual)
+	}
 }
 
 func insertTestIssueEvent(t *testing.T, db *sql.DB, issueID int64) int64 {

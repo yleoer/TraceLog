@@ -78,12 +78,33 @@ func defaultIssueFields(issue *Issue) {
 	if issue.Priority == "" {
 		issue.Priority = "medium"
 	}
-	if issue.Tags == nil {
-		issue.Tags = []string{}
+	if issue.JiraTags == nil && issue.CustomTags == nil && issue.Tags != nil {
+		issue.CustomTags = issue.Tags
 	}
+	issue.JiraTags = cleanIssueTags(issue.JiraTags)
+	issue.CustomTags = cleanIssueTags(issue.CustomTags)
+	issue.Tags = mergeIssueTags(issue.JiraTags, issue.CustomTags)
 	if issue.Links == nil {
 		issue.Links = []Link{}
 	}
+}
+
+func cleanIssueTags(tags []string) []string {
+	seen := map[string]bool{}
+	cleaned := []string{}
+	for _, tag := range tags {
+		tag = strings.TrimSpace(tag)
+		if tag == "" || seen[tag] {
+			continue
+		}
+		seen[tag] = true
+		cleaned = append(cleaned, tag)
+	}
+	return cleaned
+}
+
+func mergeIssueTags(jiraTags []string, customTags []string) []string {
+	return cleanIssueTags(append(append([]string{}, jiraTags...), customTags...))
 }
 
 func defaultTaskFields(task *TempTask) {

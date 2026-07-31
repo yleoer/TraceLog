@@ -74,7 +74,7 @@ func (s *IntegrationService) ImportJiraIssue(ctx context.Context, jiraKey string
 		Title:        fields.Summary,
 		Status:       strings.TrimSpace(fields.Status.Name),
 		Priority:     mapJiraPriority(fields.Priority.Name),
-		Tags:         fields.Labels,
+		JiraTags:     fields.Labels,
 		BackgroundMD: renderJiraBackground(remoteIssue, browseURL),
 		Links: []Link{
 			{Title: "Jira", URL: browseURL, Type: "jira"},
@@ -98,7 +98,7 @@ func (s *IntegrationService) RefreshJiraIssue(ctx context.Context, jiraKey strin
 	existing.Title = imported.Title
 	existing.Status = imported.Status
 	existing.Priority = imported.Priority
-	existing.Tags = imported.Tags
+	existing.JiraTags = imported.JiraTags
 	existing.BackgroundMD = imported.BackgroundMD
 	existing.Links = imported.Links
 	existing.StartedAt = imported.StartedAt

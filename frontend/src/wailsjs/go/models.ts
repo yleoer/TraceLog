@@ -532,6 +532,8 @@ export namespace service {
 	    status: string;
 	    priority: string;
 	    tags: string[];
+	    jira_tags: string[];
+	    custom_tags: string[];
 	    summary_md: string;
 	    background_md: string;
 	    analysis_md: string;
@@ -558,6 +560,8 @@ export namespace service {
 	        this.status = source["status"];
 	        this.priority = source["priority"];
 	        this.tags = source["tags"];
+	        this.jira_tags = source["jira_tags"];
+	        this.custom_tags = source["custom_tags"];
 	        this.summary_md = source["summary_md"];
 	        this.background_md = source["background_md"];
 	        this.analysis_md = source["analysis_md"];

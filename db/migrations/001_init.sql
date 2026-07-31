@@ -6,6 +6,8 @@ CREATE TABLE IF NOT EXISTS issues (
   status TEXT NOT NULL,
   priority TEXT NOT NULL,
   tags TEXT NOT NULL DEFAULT '[]',
+  jira_tags TEXT NOT NULL DEFAULT '[]',
+  custom_tags TEXT NOT NULL DEFAULT '[]',
   summary_md TEXT NOT NULL DEFAULT '',
   background_md TEXT NOT NULL DEFAULT '',
   analysis_md TEXT NOT NULL DEFAULT '',

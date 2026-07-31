@@ -153,10 +153,11 @@ const columns: DataTableColumns<Issue> = [
     title: '标签',
     key: 'tags',
     minWidth: 140,
-    render: (row) =>
-      row.tags.length
+    render: (row) => {
+      const displayTags = row.custom_tags.length > 0 ? row.custom_tags : row.jira_tags
+      return displayTags.length
         ? [
-            ...row.tags.slice(0, 3).map((rowTag) =>
+            ...displayTags.slice(0, 3).map((rowTag) =>
               h(
                 NTag,
                 {
@@ -167,17 +168,18 @@ const columns: DataTableColumns<Issue> = [
                 { default: () => rowTag }
               )
             ),
-            ...(row.tags.length > 3
+            ...(displayTags.length > 3
               ? [
                   h(
                     'span',
-                    { class: 'issue-tags-more', title: row.tags.slice(3).join('、') },
+                    { class: 'issue-tags-more', title: displayTags.slice(3).join('、') },
                     '...'
                   )
                 ]
               : [])
           ]
         : '-'
+    }
   },
   {
     title: '导入时间',
@@ -349,17 +351,7 @@ async function refreshIssueFromJira(row: Issue) {
   if (refreshingIssueKeys.value.has(row.jira_key)) return
   refreshingIssueKeys.value = new Set(refreshingIssueKeys.value).add(row.jira_key)
   try {
-    const imported = await api.importJiraIssue(row.jira_key)
-    await api.updateIssue(row.jira_key, {
-      ...row,
-      jira_key: imported.jira_key,
-      title: imported.title,
-      status: imported.status,
-      priority: imported.priority,
-      tags: imported.tags ?? [],
-      background_md: imported.background_md,
-      links: imported.links?.length ? imported.links : row.links
-    })
+    await api.refreshJiraIssue(row.jira_key)
     await load()
     message.success('已从 Jira 刷新最新数据')
   } catch (error) {

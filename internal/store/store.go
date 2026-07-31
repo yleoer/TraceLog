@@ -198,6 +198,12 @@ func (s *Store) EnsurePerformanceSchema(ctx context.Context) error {
 	if _, err := s.activeRunner().ExecContext(ctx, performanceSchema); err != nil {
 		return err
 	}
+	if err := s.ensureIssueTagSourceColumns(ctx); err != nil {
+		return err
+	}
+	if err := s.migrateLegacyIssueTags(ctx); err != nil {
+		return err
+	}
 	if err := s.ensureIssueWorkPeriodsTable(ctx); err != nil {
 		return err
 	}
@@ -205,6 +211,122 @@ func (s *Store) EnsurePerformanceSchema(ctx context.Context) error {
 		return err
 	}
 	return s.backfillSearchIndexRefs(ctx)
+}
+
+func (s *Store) ensureIssueTagSourceColumns(ctx context.Context) error {
+	rows, err := s.activeRunner().QueryContext(ctx, `PRAGMA table_info(issues)`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	columns := map[string]bool{}
+	for rows.Next() {
+		var cid, notNull, primaryKey int
+		var name, columnType string
+		var defaultValue any
+		if err := rows.Scan(&cid, &name, &columnType, &notNull, &defaultValue, &primaryKey); err != nil {
+			return err
+		}
+		columns[name] = true
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for _, column := range []string{"jira_tags", "custom_tags"} {
+		if columns[column] {
+			continue
+		}
+		if _, err := s.activeRunner().ExecContext(ctx, `ALTER TABLE issues ADD COLUMN `+column+` TEXT NOT NULL DEFAULT '[]'`); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Store) migrateLegacyIssueTags(ctx context.Context) error {
+	version, err := s.metaValue(ctx, "issue_tag_sources_version")
+	if err != nil {
+		return err
+	}
+	if version == "1" {
+		return nil
+	}
+
+	rows, err := s.activeRunner().QueryContext(ctx, `SELECT id, tags, jira_tags, custom_tags FROM issues`)
+	if err != nil {
+		return err
+	}
+	type tagRecord struct {
+		id         int64
+		jiraTags   []string
+		customTags []string
+	}
+	records := []tagRecord{}
+	for rows.Next() {
+		var id int64
+		var tagsJSON, jiraTagsJSON, customTagsJSON string
+		if err := rows.Scan(&id, &tagsJSON, &jiraTagsJSON, &customTagsJSON); err != nil {
+			_ = rows.Close()
+			return err
+		}
+		tags, err := decodeStringSliceJSON(tagsJSON, "issue.tags")
+		if err != nil {
+			continue
+		}
+		jiraTags, err := decodeStringSliceJSON(jiraTagsJSON, "issue.jira_tags")
+		if err != nil {
+			continue
+		}
+		customTags, err := decodeStringSliceJSON(customTagsJSON, "issue.custom_tags")
+		if err != nil {
+			continue
+		}
+		if len(jiraTags) == 0 && len(customTags) == 0 {
+			customTags = tags
+		}
+		records = append(records, tagRecord{id: id, jiraTags: cleanTags(jiraTags), customTags: cleanTags(customTags)})
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return err
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+
+	if err := s.withTx(ctx, func(tx *sql.Tx) error {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM issue_tags`); err != nil {
+			return err
+		}
+		for _, record := range records {
+			tags := cleanTags(append(append([]string{}, record.jiraTags...), record.customTags...))
+			tagsJSON, err := json.Marshal(tags)
+			if err != nil {
+				return err
+			}
+			jiraTagsJSON, err := json.Marshal(record.jiraTags)
+			if err != nil {
+				return err
+			}
+			customTagsJSON, err := json.Marshal(record.customTags)
+			if err != nil {
+				return err
+			}
+			if _, err := tx.ExecContext(ctx, `UPDATE issues SET tags = ?, jira_tags = ?, custom_tags = ? WHERE id = ?`, string(tagsJSON), string(jiraTagsJSON), string(customTagsJSON), record.id); err != nil {
+				return err
+			}
+			for _, tag := range tags {
+				if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO issue_tags (issue_id, tag) VALUES (?, ?)`, record.id, tag); err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
+	return s.setMetaValue(ctx, "issue_tag_sources_version", "1")
 }
 
 func (s *Store) ensureActivityEventsTable(ctx context.Context) error {
@@ -218,7 +340,7 @@ func (s *Store) ensureIssueWorkPeriodsTable(ctx context.Context) error {
 }
 
 func (s *Store) ListIssues(ctx context.Context, filter service.IssueFilter) ([]service.Issue, error) {
-	query := `SELECT i.id, i.jira_key, i.title, i.status, i.priority, i.tags, i.summary_md, i.background_md, i.analysis_md, i.solution_md, i.actions_md, i.result_md, i.todo_md, i.links_json, i.started_at, i.completed_at, i.created_at, i.updated_at FROM issues i`
+	query := `SELECT i.id, i.jira_key, i.title, i.status, i.priority, i.tags, i.jira_tags, i.custom_tags, i.summary_md, i.background_md, i.analysis_md, i.solution_md, i.actions_md, i.result_md, i.todo_md, i.links_json, i.started_at, i.completed_at, i.created_at, i.updated_at FROM issues i`
 	args := []any{}
 	where := []string{}
 	searchQuery := strings.TrimSpace(filter.Query)
@@ -253,7 +375,7 @@ func (s *Store) ListIssues(ctx context.Context, filter service.IssueFilter) ([]s
 }
 
 func (s *Store) GetIssue(ctx context.Context, jiraKey string) (service.Issue, error) {
-	row := s.activeRunner().QueryRowContext(ctx, `SELECT id, jira_key, title, status, priority, tags, summary_md, background_md, analysis_md, solution_md, actions_md, result_md, todo_md, links_json, started_at, completed_at, created_at, updated_at FROM issues WHERE jira_key = ?`, jiraKey)
+	row := s.activeRunner().QueryRowContext(ctx, `SELECT id, jira_key, title, status, priority, tags, jira_tags, custom_tags, summary_md, background_md, analysis_md, solution_md, actions_md, result_md, todo_md, links_json, started_at, completed_at, created_at, updated_at FROM issues WHERE jira_key = ?`, jiraKey)
 	return scanIssue(row)
 }
 
@@ -298,13 +420,14 @@ func (s *Store) ReplaceIssueWorkPeriods(ctx context.Context, issueID int64, peri
 }
 
 func (s *Store) CreateIssue(ctx context.Context, issue service.Issue) (service.Issue, error) {
-	tags, links, err := encodeIssueJSON(issue)
+	normalizeIssueTags(&issue)
+	tags, jiraTags, customTags, links, err := encodeIssueJSON(issue)
 	if err != nil {
 		return service.Issue{}, err
 	}
 	err = s.withTx(ctx, func(tx *sql.Tx) error {
-		result, err := tx.ExecContext(ctx, `INSERT INTO issues (jira_key, title, status, priority, tags, summary_md, background_md, analysis_md, solution_md, actions_md, result_md, todo_md, links_json, started_at, completed_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			issue.JiraKey, issue.Title, issue.Status, issue.Priority, tags, issue.SummaryMD, issue.BackgroundMD, issue.AnalysisMD, issue.SolutionMD, issue.ActionsMD, issue.ResultMD, issue.TodoMD, links, issue.StartedAt, issue.CompletedAt, issue.CreatedAt, issue.UpdatedAt)
+		result, err := tx.ExecContext(ctx, `INSERT INTO issues (jira_key, title, status, priority, tags, jira_tags, custom_tags, summary_md, background_md, analysis_md, solution_md, actions_md, result_md, todo_md, links_json, started_at, completed_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			issue.JiraKey, issue.Title, issue.Status, issue.Priority, tags, jiraTags, customTags, issue.SummaryMD, issue.BackgroundMD, issue.AnalysisMD, issue.SolutionMD, issue.ActionsMD, issue.ResultMD, issue.TodoMD, links, issue.StartedAt, issue.CompletedAt, issue.CreatedAt, issue.UpdatedAt)
 		if err != nil {
 			return err
 		}
@@ -315,18 +438,19 @@ func (s *Store) CreateIssue(ctx context.Context, issue service.Issue) (service.I
 }
 
 func (s *Store) UpdateIssue(ctx context.Context, issue service.Issue) (service.Issue, error) {
-	tags, links, err := encodeIssueJSON(issue)
+	normalizeIssueTags(&issue)
+	tags, jiraTags, customTags, links, err := encodeIssueJSON(issue)
 	if err != nil {
 		return service.Issue{}, err
 	}
 	var updated service.Issue
 	err = s.withTx(ctx, func(tx *sql.Tx) error {
-		if _, err := tx.ExecContext(ctx, `UPDATE issues SET title = ?, status = ?, priority = ?, tags = ?, summary_md = ?, background_md = ?, analysis_md = ?, solution_md = ?, actions_md = ?, result_md = ?, todo_md = ?, links_json = ?, started_at = ?, completed_at = ?, updated_at = ? WHERE jira_key = ?`,
-			issue.Title, issue.Status, issue.Priority, tags, issue.SummaryMD, issue.BackgroundMD, issue.AnalysisMD, issue.SolutionMD, issue.ActionsMD, issue.ResultMD, issue.TodoMD, links, issue.StartedAt, issue.CompletedAt, issue.UpdatedAt, issue.JiraKey); err != nil {
+		if _, err := tx.ExecContext(ctx, `UPDATE issues SET title = ?, status = ?, priority = ?, tags = ?, jira_tags = ?, custom_tags = ?, summary_md = ?, background_md = ?, analysis_md = ?, solution_md = ?, actions_md = ?, result_md = ?, todo_md = ?, links_json = ?, started_at = ?, completed_at = ?, updated_at = ? WHERE jira_key = ?`,
+			issue.Title, issue.Status, issue.Priority, tags, jiraTags, customTags, issue.SummaryMD, issue.BackgroundMD, issue.AnalysisMD, issue.SolutionMD, issue.ActionsMD, issue.ResultMD, issue.TodoMD, links, issue.StartedAt, issue.CompletedAt, issue.UpdatedAt, issue.JiraKey); err != nil {
 			return err
 		}
 		var err error
-		updated, err = scanIssue(tx.QueryRowContext(ctx, `SELECT id, jira_key, title, status, priority, tags, summary_md, background_md, analysis_md, solution_md, actions_md, result_md, todo_md, links_json, started_at, completed_at, created_at, updated_at FROM issues WHERE jira_key = ?`, issue.JiraKey))
+		updated, err = scanIssue(tx.QueryRowContext(ctx, `SELECT id, jira_key, title, status, priority, tags, jira_tags, custom_tags, summary_md, background_md, analysis_md, solution_md, actions_md, result_md, todo_md, links_json, started_at, completed_at, created_at, updated_at FROM issues WHERE jira_key = ?`, issue.JiraKey))
 		if err != nil {
 			return err
 		}
@@ -788,7 +912,7 @@ WITH matched_issues AS (
   UNION
   SELECT id FROM issues WHERE completed_at >= ? AND completed_at < ?
 )
-SELECT i.id, i.jira_key, i.title, i.status, i.priority, i.tags, i.summary_md, i.background_md, i.analysis_md, i.solution_md, i.actions_md, i.result_md, i.todo_md, i.links_json, i.started_at, i.completed_at, i.created_at, i.updated_at
+SELECT i.id, i.jira_key, i.title, i.status, i.priority, i.tags, i.jira_tags, i.custom_tags, i.summary_md, i.background_md, i.analysis_md, i.solution_md, i.actions_md, i.result_md, i.todo_md, i.links_json, i.started_at, i.completed_at, i.created_at, i.updated_at
 FROM issues i
 JOIN matched_issues m ON m.id = i.id
 ORDER BY i.updated_at DESC`, start, end, start, end, start, end, start, end)
@@ -1082,16 +1206,33 @@ func (s *Store) Search(ctx context.Context, query string, entityType string, lim
 	return results, rows.Err()
 }
 
-func encodeIssueJSON(issue service.Issue) (string, string, error) {
-	tags, err := json.Marshal(issue.Tags)
+func encodeIssueJSON(issue service.Issue) (string, string, string, string, error) {
+	tagsJSON, err := json.Marshal(issue.Tags)
 	if err != nil {
-		return "", "", err
+		return "", "", "", "", err
+	}
+	jiraTagsJSON, err := json.Marshal(issue.JiraTags)
+	if err != nil {
+		return "", "", "", "", err
+	}
+	customTagsJSON, err := json.Marshal(issue.CustomTags)
+	if err != nil {
+		return "", "", "", "", err
 	}
 	links, err := json.Marshal(issue.Links)
 	if err != nil {
-		return "", "", err
+		return "", "", "", "", err
 	}
-	return string(tags), string(links), nil
+	return string(tagsJSON), string(jiraTagsJSON), string(customTagsJSON), string(links), nil
+}
+
+func normalizeIssueTags(issue *service.Issue) {
+	issue.JiraTags = cleanTags(issue.JiraTags)
+	issue.CustomTags = cleanTags(issue.CustomTags)
+	if len(issue.JiraTags) == 0 && len(issue.CustomTags) == 0 && len(issue.Tags) > 0 {
+		issue.CustomTags = cleanTags(issue.Tags)
+	}
+	issue.Tags = cleanTags(append(append([]string{}, issue.JiraTags...), issue.CustomTags...))
 }
 
 func decodeStringSliceJSON(value string, field string) ([]string, error) {
@@ -1293,7 +1434,7 @@ SELECT entity_type, entity_id, rowid FROM search_index`); err != nil {
 
 func (s *Store) backfillIssueSearchIndex(ctx context.Context) error {
 	rows, err := s.activeRunner().QueryContext(ctx, `
-SELECT id, jira_key, title, status, priority, tags, summary_md, background_md, analysis_md, solution_md, actions_md, result_md, todo_md, links_json, started_at, completed_at, created_at, updated_at
+SELECT id, jira_key, title, status, priority, tags, jira_tags, custom_tags, summary_md, background_md, analysis_md, solution_md, actions_md, result_md, todo_md, links_json, started_at, completed_at, created_at, updated_at
 FROM issues
 WHERE jira_key NOT IN (SELECT entity_id FROM search_index_refs WHERE entity_type = 'issue')`)
 	if err != nil {
@@ -1534,13 +1675,19 @@ func tempTaskEventFromRow(row eventRow) service.TempTaskEvent {
 
 func scanIssue(row scanner) (service.Issue, error) {
 	var issue service.Issue
-	var tags string
+	var tags, jiraTags, customTags string
 	var links string
-	err := row.Scan(&issue.ID, &issue.JiraKey, &issue.Title, &issue.Status, &issue.Priority, &tags, &issue.SummaryMD, &issue.BackgroundMD, &issue.AnalysisMD, &issue.SolutionMD, &issue.ActionsMD, &issue.ResultMD, &issue.TodoMD, &links, &issue.StartedAt, &issue.CompletedAt, &issue.CreatedAt, &issue.UpdatedAt)
+	err := row.Scan(&issue.ID, &issue.JiraKey, &issue.Title, &issue.Status, &issue.Priority, &tags, &jiraTags, &customTags, &issue.SummaryMD, &issue.BackgroundMD, &issue.AnalysisMD, &issue.SolutionMD, &issue.ActionsMD, &issue.ResultMD, &issue.TodoMD, &links, &issue.StartedAt, &issue.CompletedAt, &issue.CreatedAt, &issue.UpdatedAt)
 	if err != nil {
 		return service.Issue{}, err
 	}
 	if issue.Tags, err = decodeStringSliceJSON(tags, "issue.tags"); err != nil {
+		return service.Issue{}, err
+	}
+	if issue.JiraTags, err = decodeStringSliceJSON(jiraTags, "issue.jira_tags"); err != nil {
+		return service.Issue{}, err
+	}
+	if issue.CustomTags, err = decodeStringSliceJSON(customTags, "issue.custom_tags"); err != nil {
 		return service.Issue{}, err
 	}
 	if issue.Links, err = decodeLinksJSON(links, "issue.links_json"); err != nil {

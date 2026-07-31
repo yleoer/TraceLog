@@ -79,11 +79,15 @@
           <div class="text-sm">{{ importedAtText }}</div>
         </div>
         <div class="col-span-full border-b border-gray-100 pb-3">
-          <label class="field-label">标签</label>
+          <label class="field-label">Jira 标签</label>
           <div class="flex flex-wrap gap-1.5 mt-1">
-            <n-tag v-for="tagItem in form.tags" :key="tagItem" size="small" class="cursor-pointer" @click="showIssuesByTag(tagItem)">{{ tagItem }}</n-tag>
-            <span v-if="form.tags.length === 0" class="text-sm text-gray-400">-</span>
+            <n-tag v-for="tagItem in form.jira_tags" :key="tagItem" type="info" size="small" class="cursor-pointer" @click="showIssuesByTag(tagItem)">{{ tagItem }}</n-tag>
+            <span v-if="form.jira_tags.length === 0" class="text-sm text-gray-400">-</span>
           </div>
+        </div>
+        <div class="col-span-full border-b border-gray-100 pb-3">
+          <label class="field-label">自定义标签</label>
+          <n-dynamic-tags v-model:value="form.custom_tags" size="small" @update:value="saveManualFieldsSoon" />
         </div>
         <div v-if="!isNew" class="border-b border-gray-100 pb-3">
           <label class="field-label">开始时间</label>
@@ -207,6 +211,7 @@ import {
   NCheckbox,
   NCollapse,
   NCollapseItem,
+  NDynamicTags,
   NInput,
   NInputGroup,
   NInputGroupLabel,
@@ -256,6 +261,8 @@ interface IssueForm {
   status: string
   priority: string
   tags: string[]
+  jira_tags: string[]
+  custom_tags: string[]
   summary_md: string
   background_md: string
   analysis_md: string
@@ -278,6 +285,8 @@ const form = reactive<IssueForm>({
   status: 'analysis',
   priority: 'medium',
   tags: [],
+  jira_tags: [],
+  custom_tags: [],
   summary_md: '',
   background_md: '',
   analysis_md: '',
@@ -353,6 +362,8 @@ async function importFromJira() {
       status: imported.status,
       priority: imported.priority,
       tags: imported.tags ?? [],
+      jira_tags: imported.jira_tags ?? [],
+      custom_tags: form.custom_tags ?? [],
       background_md: imported.background_md,
       links: imported.links?.length ? imported.links : [{ title: 'Jira', url: `${ATLASSIAN_BASE_URL}/browse/${imported.jira_key}`, type: 'jira' }],
       started_at: imported.started_at,
