@@ -67,7 +67,7 @@ GitHub Actions 会通过 [.github/workflows/release.yml](.github/workflows/relea
 可以在 GitHub Actions 页面手动运行 `Release Builds` workflow 生成可下载 artifact。要发布到 GitHub Release，先提交发布说明，再创建并推送注释 tag：
 
 ```powershell
-$tag = 'v0.1.9'
+$tag = 'v0.1.10'
 git push origin main
 git tag -a $tag -m "发布 $tag"
 git push origin $tag
