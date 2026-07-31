@@ -56,7 +56,7 @@
 
 <script setup lang="ts">
 import { computed, h, ref, watch } from 'vue'
-import { NButton, NDataTable, NInput, NSelect, NTag, useMessage } from 'naive-ui'
+import { NButton, NDataTable, NInput, NSelect, NTag, NTooltip, useMessage } from 'naive-ui'
 import type { DataTableColumns } from 'naive-ui'
 import { Copy, Link2, RefreshCw } from 'lucide-vue-next'
 import { useRoute, useRouter } from 'vue-router'
@@ -112,16 +112,24 @@ const columns: DataTableColumns<Issue> = [
     width: 120,
     render: (row) =>
       h(
-        'a',
+        NTooltip,
+        { showDelay: 2000 },
         {
-          class: 'issue-key',
-          href: `/issues/${row.jira_key}`,
-          onClick: (event: MouseEvent) => {
-            event.preventDefault()
-            router.push(`/issues/${row.jira_key}`)
-          }
-        },
-        row.jira_key
+          trigger: () =>
+            h(
+              'a',
+              {
+                class: 'issue-key',
+                href: `/issues/${row.jira_key}`,
+                onClick: (event: MouseEvent) => {
+                  event.preventDefault()
+                  router.push(`/issues/${row.jira_key}`)
+                }
+              },
+              row.jira_key
+            ),
+          default: () => issueTooltipTitle(row.title)
+        }
       )
   },
   {
@@ -335,6 +343,11 @@ function firstJiraLink(row: Issue) {
 
 function formatDate(value: string) {
   return formatDateTime(value)
+}
+
+function issueTooltipTitle(title: string) {
+  const cleaned = title.replace(/^\s*(?:<[^>]*>\s*[:：]?\s*)+/, '').trim()
+  return cleaned || title.trim() || '-'
 }
 
 async function copyIssueTitle(row: Issue) {
