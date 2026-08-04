@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"strings"
 	"time"
 )
 
@@ -16,7 +17,7 @@ func (s *DashboardService) Dashboard(ctx context.Context) (Dashboard, error) {
 	}
 	active := []Issue{}
 	for _, issue := range issues {
-		if isActiveIssueStatus(issue.Status) {
+		if isDashboardActiveIssueStatus(issue.Status) {
 			active = append(active, issue)
 			if len(active) == 8 {
 				break
@@ -36,6 +37,11 @@ func (s *DashboardService) Dashboard(ctx context.Context) (Dashboard, error) {
 		return Dashboard{}, err
 	}
 	return Dashboard{RecentlyImportedIssues: recentlyImported, ActiveIssues: active, TempTasks: tasks, Todos: todos, Week: week}, nil
+}
+
+func isDashboardActiveIssueStatus(status string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(status))
+	return isActiveIssueStatus(status) || normalized == "todo" || normalized == "to do" || strings.Contains(normalized, "待办")
 }
 
 func (s *DashboardService) TodayWorkflow(ctx context.Context) (TodayWorkflow, error) {
