@@ -145,7 +145,7 @@ const themeMenuOpen = ref(false)
 const { themes, selectedThemeKey, activeTheme, setTheme } = useWorkTheme()
 
 const navItems = [
-  { path: '/', label: 'Dashboard', icon: Home },
+  { path: '/', label: '首页', icon: Home },
   { path: '/today', label: '今日', icon: TimerReset },
   { path: '/time', label: 'Time', icon: Timer },
   { path: '/issues', label: 'Issues', icon: ClipboardList },
