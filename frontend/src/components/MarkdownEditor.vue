@@ -432,6 +432,10 @@ function blobFromDataURL(dataURL: string) {
   font-weight: 700;
 }
 
+.vditor-host :deep(.vditor-reset ol) {
+  list-style-type: decimal;
+}
+
 .vditor-host :deep(.vditor-reset img),
 .vditor-host :deep(.vditor-wysiwyg img) {
   border-radius: 6px;

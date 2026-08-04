@@ -1,6 +1,6 @@
 # TraceLog
 
-TraceLog 是一个基于 Wails 的个人桌面工作日志应用，用于集中跟进 Jira Issue、临时需求、每日工作和周报。它会在刷新 Jira 时同步状态历史，沉淀工作周期，并提供月度甘特图、带图片的 Markdown 记录、全局搜索和长期 Markdown/JSON 导出。
+TraceLog 是一个基于 Wails 的个人桌面工作日志应用，用于集中跟进 Jira Issue、临时需求、每日工作和周报。它会在刷新 Jira 时同步状态历史，沉淀工作周期，并提供月度甘特图、支持图片和有序列表的 Markdown 记录、全局搜索和长期 Markdown/JSON 导出。
 
 ## 技术栈
 
