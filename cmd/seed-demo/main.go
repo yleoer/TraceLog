@@ -51,12 +51,12 @@ func seed(ctx context.Context, database *sql.DB, svc *service.Service, loc *time
 
 	issues := []service.Issue{
 		{
-			JiraKey:   "TL-1001",
-			Title:     "优化 Wails 原生绑定后的 Issue 详情页",
-			Status:    "processing",
-			Priority:  "high",
+			JiraKey:    "TL-1001",
+			Title:      "优化 Wails 原生绑定后的 Issue 详情页",
+			Status:     "processing",
+			Priority:   "high",
 			CustomTags: []string{"wails", "frontend", "demo"},
-			SummaryMD: "桌面端已经切换到 Wails 原生绑定，当前重点验证详情页读写、评论时间线和结构化 TODO。",
+			SummaryMD:  "桌面端已经切换到 Wails 原生绑定，当前重点验证详情页读写、评论时间线和结构化 TODO。",
 			BackgroundMD: strings.Join([]string{
 				"从前后端 HTTP 架构迁移到根目录 Wails 项目后，需要确认所有页面都通过 `frontend/src/api/client.ts` 调用原生绑定。",
 				"",
@@ -240,7 +240,7 @@ func seed(ctx context.Context, database *sql.DB, svc *service.Service, loc *time
 			"- 补齐 Issue、临时任务、TODO、日记录和搜索数据。",
 			"- 继续关注打包产物和图片上传 smoke test。",
 		}, "\n"),
-		NextPlanMD: "- 验证 Windows 安装包\n- 检查 macOS/Linux Actions artifact\n- 完成一次 Markdown/JSON 导出",
+		NextPlanMD: "- 验证 Windows 安装包\n- 检查 Windows Actions artifact\n- 完成一次 Markdown/JSON 导出",
 	})
 	return err
 }

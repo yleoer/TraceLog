@@ -254,16 +254,7 @@ func selectReleaseAsset(assets []githubAsset) githubAsset {
 }
 
 func releaseAssetKeywords() []string {
-	switch runtime.GOOS {
-	case "windows":
-		return []string{"windows", "amd64", "installer.exe"}
-	case "darwin":
-		return []string{"macos", ".dmg"}
-	case "linux":
-		return []string{"linux", "amd64", ".deb"}
-	default:
-		return []string{runtime.GOOS}
-	}
+	return []string{"windows", "amd64", "installer.exe"}
 }
 
 func openDesktopUpdateLogger(path string, sessionID string) (*log.Logger, func(), error) {
@@ -373,9 +364,6 @@ func waitForUpdateHelperReady(path string, timeout time.Duration) error {
 }
 
 func prepareUpdateHelper(source string) (string, error) {
-	if runtime.GOOS != "windows" {
-		return source, nil
-	}
 	dir := filepath.Join(os.TempDir(), "TraceLog", "updater")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", err
@@ -403,24 +391,15 @@ func prepareUpdateHelper(source string) (string, error) {
 }
 
 func findUpdateHelper() (string, error) {
-	switch runtime.GOOS {
-	case "windows":
-		executablePath, err := os.Executable()
-		if err != nil {
-			return "", err
-		}
-		path := filepath.Join(filepath.Dir(executablePath), updaterExecutableName)
-		if _, err := os.Stat(path); err != nil {
-			return "", fmt.Errorf("更新助手不存在，请下载安装包手动升级")
-		}
-		return path, nil
-	case "darwin":
-		return "", fmt.Errorf("当前平台暂不支持更新助手，请下载安装包手动升级")
-	case "linux":
-		return "", fmt.Errorf("当前平台暂不支持更新助手，请下载安装包手动升级")
-	default:
-		return "", fmt.Errorf("当前平台不支持自动升级")
+	executablePath, err := os.Executable()
+	if err != nil {
+		return "", err
 	}
+	path := filepath.Join(filepath.Dir(executablePath), updaterExecutableName)
+	if _, err := os.Stat(path); err != nil {
+		return "", fmt.Errorf("更新助手不存在，请下载安装包手动升级")
+	}
+	return path, nil
 }
 
 func normalizeVersion(version string) string {

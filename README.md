@@ -1,6 +1,6 @@
 # TraceLog
 
-TraceLog 是一个基于 Wails 的个人桌面工作日志应用，用于集中跟进 Jira Issue、临时需求、每日工作和周报。它会在刷新 Jira 时同步状态历史，沉淀工作周期，并提供月度甘特图、支持图片和有序列表的 Markdown 记录、全局搜索和长期 Markdown/JSON 导出。
+TraceLog 是一个仅面向 Windows amd64 的 Wails 个人桌面工作日志应用，用于集中跟进 Jira Issue、临时需求、每日工作和周报。它会在刷新 Jira 时同步状态历史，沉淀工作周期，并提供月度甘特图、支持图片和有序列表的 Markdown 记录、全局搜索和长期 Markdown/JSON 导出。
 
 ## 技术栈
 
@@ -54,7 +54,7 @@ go run ./cmd/seed-demo
 
 ```powershell
 npm.cmd --prefix frontend run build
-wails build -clean -debug -nopackage
+wails build -clean -debug -nopackage -platform windows/amd64
 Remove-Item -Recurse -Force frontend/dist/app
 ```
 
@@ -62,7 +62,7 @@ Remove-Item -Recurse -Force frontend/dist/app
 
 ## 发布构建
 
-GitHub Actions 会通过 [.github/workflows/release.yml](.github/workflows/release.yml) 为不同平台生成正式桌面产物。
+GitHub Actions 会通过 [.github/workflows/release.yml](.github/workflows/release.yml) 生成 Windows amd64 正式桌面产物。项目不再构建或发布 Linux、macOS 版本。
 
 可以在 GitHub Actions 页面手动运行 `Release Builds` workflow 生成可下载 artifact。要发布到 GitHub Release，先提交发布说明，再创建并推送注释 tag：
 
@@ -84,8 +84,6 @@ Get-ChildItem release-notes/*.md | ForEach-Object { gh release edit $_.BaseName 
 workflow 会从根目录构建 Wails 应用并上传：
 
 - Windows amd64 NSIS 安装器：`.exe`
-- Linux amd64 Debian 安装包：`.deb`
-- macOS universal 磁盘镜像：`.dmg`
 
 ## 数据和配置
 
@@ -130,7 +128,7 @@ Jira 和 AI 凭据也可以在 Settings 页面保存。
 ```powershell
 go test ./...
 npm.cmd --prefix frontend run build
-wails build -clean -debug -nopackage
+wails build -clean -debug -nopackage -platform windows/amd64
 ```
 
 如果 `wails build` 在 Windows 上提示 `TraceLog-dev.exe` 被占用，请先关闭正在运行的 TraceLog 窗口后再执行。

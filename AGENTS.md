@@ -4,7 +4,7 @@
 
 ## 项目概览
 
-- TraceLog 是根目录 Wails 桌面应用，技术栈为 Go + Wails + Vue 3 + SQLite。
+- TraceLog 是仅面向 Windows amd64 的根目录 Wails 桌面应用，技术栈为 Go + Wails + Vue 3 + SQLite。
 - 不再保留旧的前端 + 后端 + Docker Compose 架构。
 - Go 入口、Wails 配置、数据库迁移、服务层、store 层都位于仓库根目录结构下。
 - 前端只能通过 `frontend/src/api/client.ts` 调用 Wails 原生绑定。

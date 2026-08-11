@@ -3,7 +3,6 @@ package desktop
 import (
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -70,7 +69,7 @@ func TestSkippedUpdateInfo(t *testing.T) {
 	}
 }
 
-func TestSelectReleaseAssetForCurrentPlatform(t *testing.T) {
+func TestSelectReleaseAssetForWindows(t *testing.T) {
 	assets := []githubAsset{
 		{Name: "TraceLog-v0.1.0-linux-amd64.deb", BrowserDownloadURL: "linux"},
 		{Name: "TraceLog-v0.1.0-macos-universal.dmg", BrowserDownloadURL: "mac"},
@@ -79,19 +78,19 @@ func TestSelectReleaseAssetForCurrentPlatform(t *testing.T) {
 
 	asset := selectReleaseAsset(assets)
 
-	switch runtime.GOOS {
-	case "windows":
-		if asset.BrowserDownloadURL != "windows" {
-			t.Fatalf("expected windows asset, got %#v", asset)
-		}
-	case "darwin":
-		if asset.BrowserDownloadURL != "mac" {
-			t.Fatalf("expected mac asset, got %#v", asset)
-		}
-	case "linux":
-		if asset.BrowserDownloadURL != "linux" {
-			t.Fatalf("expected linux asset, got %#v", asset)
-		}
+	if asset.BrowserDownloadURL != "windows" {
+		t.Fatalf("expected windows asset, got %#v", asset)
+	}
+}
+
+func TestSelectReleaseAssetRejectsNonWindowsPackages(t *testing.T) {
+	assets := []githubAsset{
+		{Name: "TraceLog-v0.1.0-linux-amd64.deb", BrowserDownloadURL: "linux"},
+		{Name: "TraceLog-v0.1.0-macos-universal.dmg", BrowserDownloadURL: "mac"},
+	}
+
+	if asset := selectReleaseAsset(assets); asset.Name != "" {
+		t.Fatalf("expected no matching Windows asset, got %#v", asset)
 	}
 }
 
@@ -158,9 +157,6 @@ func TestWaitForUpdateHelperReadyRejectsInvalidSignal(t *testing.T) {
 }
 
 func TestPrepareUpdateHelperUsesUniqueTemporaryFiles(t *testing.T) {
-	if runtime.GOOS != "windows" {
-		t.Skip("Windows updater helper is only copied on Windows")
-	}
 	source := filepath.Join(t.TempDir(), "TraceLogUpdater.exe")
 	if err := os.WriteFile(source, []byte("updater"), 0o755); err != nil {
 		t.Fatal(err)

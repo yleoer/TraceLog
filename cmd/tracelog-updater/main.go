@@ -137,17 +137,7 @@ func runInstaller(ctx context.Context, path, installDir string, logger *log.Logg
 	startedAt := time.Now()
 	logger.Printf("installer phase started path=%q install_dir=%q timeout=%s", path, installDir, installerTimeout)
 
-	var command *exec.Cmd
-	switch runtime.GOOS {
-	case "windows":
-		command = exec.CommandContext(ctx, path, nsisInstallArguments(installDir)...)
-	case "darwin":
-		command = exec.CommandContext(ctx, "open", path)
-	case "linux":
-		command = exec.CommandContext(ctx, "xdg-open", path)
-	default:
-		return fmt.Errorf("unsupported platform: %s", runtime.GOOS)
-	}
+	command := exec.CommandContext(ctx, path, nsisInstallArguments(installDir)...)
 	output, err := command.CombinedOutput()
 	logger.Printf("installer command completed duration=%s output=%q", time.Since(startedAt), strings.TrimSpace(string(output)))
 	if err != nil {
@@ -210,7 +200,7 @@ func writeReadySignal(path string) error {
 func waitForProcessExit(pid int, timeout time.Duration, logger *log.Logger) error {
 	startedAt := time.Now()
 	logger.Printf("wait for app exit started pid=%d timeout=%s", pid, timeout)
-	if pid <= 0 || runtime.GOOS != "windows" {
+	if pid <= 0 {
 		time.Sleep(2 * time.Second)
 		logger.Printf("wait for app exit used fallback delay duration=%s", time.Since(startedAt))
 		return nil
