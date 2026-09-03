@@ -41,7 +41,7 @@ func (s *DashboardService) Dashboard(ctx context.Context) (Dashboard, error) {
 
 func isDashboardActiveIssueStatus(status string) bool {
 	normalized := strings.ToLower(strings.TrimSpace(status))
-	return isActiveIssueStatus(status) || normalized == "todo" || normalized == "to do" || strings.Contains(normalized, "待办")
+	return isActiveIssueStatus(status) || normalized == "in review" || normalized == "todo" || normalized == "to do" || strings.Contains(normalized, "待办")
 }
 
 func (s *DashboardService) TodayWorkflow(ctx context.Context) (TodayWorkflow, error) {
