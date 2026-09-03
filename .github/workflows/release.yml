@@ -105,20 +105,36 @@ jobs:
           TAG_NAME: ${{ github.ref_name }}
         run: |
           $notesFile = Join-Path "release-notes" "$env:TAG_NAME.md"
-          gh release view $env:TAG_NAME *> $null
+          $viewArgs = @("release", "view", $env:TAG_NAME, "--repo", $env:GH_REPO)
+          & gh @viewArgs *> $null
           $releaseExists = $LASTEXITCODE -eq 0
 
+          $releaseArgs = $null
           if (Test-Path -LiteralPath $notesFile) {
             if ($releaseExists) {
-              gh release edit $env:TAG_NAME --title $env:TAG_NAME --notes-file $notesFile
+              $releaseArgs = @("release", "edit", $env:TAG_NAME, "--repo", $env:GH_REPO, "--title", $env:TAG_NAME, "--notes-file", $notesFile)
             else
-              gh release create $env:TAG_NAME --title $env:TAG_NAME --notes-file $notesFile
+              $releaseArgs = @("release", "create", $env:TAG_NAME, "--repo", $env:GH_REPO, "--title", $env:TAG_NAME, "--notes-file", $notesFile)
             }
           } elseif (-not $releaseExists) {
-            gh release create $env:TAG_NAME --title $env:TAG_NAME --generate-notes
+            $releaseArgs = @("release", "create", $env:TAG_NAME, "--repo", $env:GH_REPO, "--title", $env:TAG_NAME, "--generate-notes")
           }
-          if ($LASTEXITCODE -ne 0) {
-            throw "Failed to create or update GitHub Release $env:TAG_NAME."
+
+          if ($null -ne $releaseArgs) {
+            $releaseExitCode = 1
+            for ($attempt = 1; $attempt -le 3; $attempt++) {
+              & gh @releaseArgs
+              $releaseExitCode = $LASTEXITCODE
+              if ($releaseExitCode -eq 0) {
+                break
+              }
+              if ($attempt -lt 3) {
+                Start-Sleep -Seconds (5 * $attempt)
+              }
+            }
+            if ($releaseExitCode -ne 0) {
+              throw "Failed to create or update GitHub Release $env:TAG_NAME (exit code $releaseExitCode)."
+            }
           }
 
           $assets = Get-ChildItem -Path release-assets -File -Recurse
@@ -126,8 +142,10 @@ jobs:
             throw "No release assets were downloaded."
           }
           foreach ($asset in $assets) {
-            gh release upload $env:TAG_NAME $asset.FullName --clobber
-            if ($LASTEXITCODE -ne 0) {
-              throw "Failed to upload release asset $($asset.FullName)."
+            $uploadArgs = @("release", "upload", $env:TAG_NAME, $asset.FullName, "--repo", $env:GH_REPO, "--clobber")
+            & gh @uploadArgs
+            $uploadExitCode = $LASTEXITCODE
+            if ($uploadExitCode -ne 0) {
+              throw "Failed to upload release asset $($asset.FullName) (exit code $uploadExitCode)."
             }
           }
