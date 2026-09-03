@@ -113,7 +113,7 @@ jobs:
           if (Test-Path -LiteralPath $notesFile) {
             if ($releaseExists) {
               $releaseArgs = @("release", "edit", $env:TAG_NAME, "--repo", $env:GH_REPO, "--title", $env:TAG_NAME, "--notes-file", $notesFile)
-            else
+            } else {
               $releaseArgs = @("release", "create", $env:TAG_NAME, "--repo", $env:GH_REPO, "--title", $env:TAG_NAME, "--notes-file", $notesFile)
             }
           } elseif (-not $releaseExists) {
