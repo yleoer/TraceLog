@@ -31,3 +31,5 @@
 - 阶段 1：`cargo check -p tracelog`、`cargo clippy --all-targets -- -D warnings`、格式与差异检查通过。
 - 阶段 1 真实验收：`0.2.0-rc.1 -> 0.2.0-rc.2` 通过。旧进程退出，新版从原安装目录启动，二进制与同一签名安装器的全新安装结果哈希一致，测试数据保留。
 - 哈希基准必须使用安装器内的二进制：Tauri 会写入 NSIS bundle 类型标记，随后恢复 Cargo 输出，直接比较 `target/release/*.exe` 会出现预期的标记差异。
+- 阶段 2：旧库转换/重复打开、WAL 备份、错误回滚、原子保存与凭据保留、搜索引用更新/删除共 4 个集成测试通过；全目标/全特性 Clippy 通过。
+- 阶段 2 真实旧库检查：Go `seed-demo` 生成的 SQLite 副本转换通过，3 个 Issue、6 个 Issue 评论、5 个 TODO、3 个临时需求、4 个临时需求评论、3 个每日记录、1 个周报全部保留，`PRAGMA integrity_check` 返回 `ok`；`cargo test --workspace` 通过。
