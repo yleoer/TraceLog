@@ -1,8 +1,8 @@
 use chrono::Utc;
-use serde::Serialize;
 use std::{fs::OpenOptions, io::Write, path::PathBuf};
 use tauri::{AppHandle, Emitter};
 use tauri_plugin_updater::UpdaterExt;
+use tracelog::models::UpdateInfo;
 
 fn log_path() -> PathBuf {
     std::env::var_os("APP_DATA_DIR")
@@ -40,24 +40,16 @@ fn updater(app: &AppHandle) -> Result<tauri_plugin_updater::Updater, String> {
     builder.build().map_err(|e| e.to_string())
 }
 
-#[derive(Serialize)]
-pub struct UpdateInfo {
-    current_version: String,
-    latest_version: String,
-    has_update: bool,
-    skipped: bool,
-    message: String,
-    checked_at: String,
-    release_url: String,
-    asset_name: String,
-    asset_url: String,
-    asset_digest: String,
-    published_at: String,
-    release_notes: String,
-}
-
 #[tauri::command]
 pub async fn get_update_info(app: AppHandle) -> Result<UpdateInfo, String> {
+    if cfg!(debug_assertions) && !cfg!(feature = "update-e2e") {
+        return Ok(UpdateInfo {
+            current_version: app.package_info().version.to_string(),
+            skipped: true,
+            message: "开发版本不检查更新".into(),
+            ..Default::default()
+        });
+    }
     log("开始检查更新");
     let update = updater(&app)?.check().await.map_err(|e| {
         log(&format!("检查更新失败：{e}"));
@@ -107,6 +99,18 @@ pub async fn get_update_info(app: AppHandle) -> Result<UpdateInfo, String> {
 
 #[tauri::command]
 pub async fn install_update(app: AppHandle) -> Result<(), String> {
+    static INSTALLING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    use std::sync::atomic::Ordering;
+    if INSTALLING.swap(true, Ordering::SeqCst) {
+        return Err("正在执行升级".into());
+    }
+    struct Reset;
+    impl Drop for Reset {
+        fn drop(&mut self) {
+            INSTALLING.store(false, Ordering::SeqCst);
+        }
+    }
+    let _reset = Reset;
     let result = async {
         let update = updater(&app)?
             .check()

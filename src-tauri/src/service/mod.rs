@@ -8,14 +8,22 @@ use rusqlite::Connection;
 use std::sync::Mutex;
 
 pub mod export;
+pub mod integrations;
+pub mod jira;
 pub mod local;
 pub mod markdown;
+pub mod remote;
+pub mod time;
+pub mod uploads;
 pub mod views;
 
 pub struct Service {
     pub config: Config,
     pub database: Mutex<Connection>,
     pub settings: Mutex<SettingsStore>,
+    pub http: reqwest::Client,
+    pub settings_write: tokio::sync::Mutex<()>,
+    pub time_write: tokio::sync::Mutex<()>,
 }
 
 impl Service {
@@ -27,12 +35,24 @@ impl Service {
             database: Mutex::new(database),
             settings: Mutex::new(settings),
             config,
+            http: reqwest::Client::builder()
+                .timeout(std::time::Duration::from_secs(60))
+                .connect_timeout(std::time::Duration::from_secs(10))
+                .redirect(reqwest::redirect::Policy::none())
+                .build()
+                .map_err(|_| AppError::Remote("无法初始化网络客户端".into()))?,
+            settings_write: tokio::sync::Mutex::new(()),
+            time_write: tokio::sync::Mutex::new(()),
         })
     }
 
     pub fn with_db<T>(&self, call: impl FnOnce(&Connection) -> Result<T>) -> Result<T> {
         let db = self.database.lock().map_err(|_| AppError::State)?;
         call(&db)
+    }
+
+    pub fn load_settings(&self) -> Result<crate::models::AppSettings> {
+        self.settings.lock().map_err(|_| AppError::State)?.load()
     }
 }
 

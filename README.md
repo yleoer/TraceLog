@@ -2,7 +2,7 @@
 
 TraceLog 是仅面向 Windows amd64 的个人桌面工作日志应用，采用 Rust + Tauri 2 + Vue 3 + SQLite。保留现有 Naive UI 界面和旧版数据格式，业务调用统一经过 `frontend/src/api/client.ts` 的原生 IPC。
 
-当前 Rust 迁移分支已完成签名升级、旧库兼容及本地业务；Jira、Tempo、AI、图片和发布流程正在后续阶段迁移。完整记录见 [迁移记录](docs/rust-migration.md)。
+当前 Rust 迁移分支已完成签名升级、旧库兼容、本地业务和外部集成，发布流程正在最后阶段迁移。完整记录见 [迁移记录](docs/rust-migration.md)。
 
 ## 功能
 
@@ -11,6 +11,10 @@ TraceLog 是仅面向 Windows amd64 的个人桌面工作日志应用，采用 R
 - SQLite FTS 全局搜索，Markdown、JSON 与包含图片的 Markdown ZIP 导出。
 - 设置原子保存，空凭据保留原值，返回界面时隐藏密钥。
 - Tauri 官方签名更新：下载并校验成功后由 NSIS 接管安装与重启。
+- Jira 导入预览与刷新，完整状态历史分页、重开周期、Release Requested 字段及 ADF 转 Markdown；刷新保留用户备注和自定义标签。
+- Tempo 周工时缓存与主动刷新，允许事项的日期范围提交（最多 31 天、每天 1–8 整数小时），按已有工时顺延开始时间，逐日报告成功和失败。
+- OpenAI 兼容服务和 DeepSeek 的 Issue 简述、周总结及自定义提示词；网络请求不占用数据库锁，写回保留期间新增的其他编辑。
+- Markdown 图片上传、原生读取、未引用图片清理，以及原生剪贴板和外部链接。图片限制为 8 MiB 的 PNG、JPEG、GIF 或 WebP。
 
 ## 开发与构建
 

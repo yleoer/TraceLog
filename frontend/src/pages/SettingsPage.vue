@@ -179,7 +179,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, onBeforeUnmount, reactive, ref } from 'vue'
 import { NButton, NFormItem, NInput, NPopconfirm, NRadioButton, NRadioGroup, useDialog, useMessage } from 'naive-ui'
 import { Check } from 'lucide-vue-next'
 import { api, downloadUrl } from '../api/client'
@@ -194,6 +194,10 @@ const cleaningImages = ref(false)
 const checkingUpdate = ref(false)
 const installingUpdate = ref(false)
 const updateInfo = ref<UpdateInfo | null>(null)
+const updateBytes = ref(0)
+const updateTotal = ref<number>()
+let stopUpdateProgress: (() => void) | undefined
+onBeforeUnmount(() => stopUpdateProgress?.())
 const { themes, selectedThemeKey, activeTheme, setTheme } = useWorkTheme()
 const updateCacheKey = 'tracelog:update-info:v1'
 const updateAutoCheckIntervalMs = 12 * 60 * 60 * 1000
@@ -213,7 +217,7 @@ const form = reactive<AppSettings>({
 })
 
 const updateStatusText = computed(() => {
-  if (installingUpdate.value) return `正在下载并校验 ${updateInfo.value?.latest_version || '新版本'} 安装包，完成后将关闭 TraceLog 并开始安装。`
+  if (installingUpdate.value) return `正在下载并校验 ${updateInfo.value?.latest_version || '新版本'}：${updateTotal.value ? Math.min(100, Math.round(updateBytes.value / updateTotal.value * 100)) + '%' : (updateBytes.value / 1048576).toFixed(1) + ' MiB'}，完成后自动安装并重启。`
   if (!updateInfo.value) return '自动检查最多每 12 小时执行一次，也可手动检查更新。'
   if (updateInfo.value.skipped) return updateInfo.value.message || '开发版本不检查更新。'
   if (updateInfo.value.has_update && updateInfo.value.asset_url) return '发现新版本，升级时会先下载并校验安装包，再关闭 TraceLog 并安装。'
@@ -291,11 +295,20 @@ async function installUpdate() {
 
 async function startInstallUpdate() {
   installingUpdate.value = true
+  updateBytes.value = 0
+  updateTotal.value = undefined
   try {
+    stopUpdateProgress?.()
+    stopUpdateProgress = await api.onUpdateProgress(progress => {
+      updateBytes.value += progress.chunk
+      updateTotal.value = progress.total
+    })
     await api.installUpdate()
   } catch (error) {
     message.error((error as Error).message)
   } finally {
+    stopUpdateProgress?.()
+    stopUpdateProgress = undefined
     installingUpdate.value = false
   }
 }

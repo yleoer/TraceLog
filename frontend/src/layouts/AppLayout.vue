@@ -1,7 +1,7 @@
 <template>
   <div class="app-shell" :class="{ 'sidebar-collapsed': collapsed }">
     <header class="window-titlebar" @dblclick="handleTitlebarDoubleClick">
-      <div class="titlebar-brand">
+      <div class="titlebar-brand" @mousedown.left="desktopWindow.startDragging()">
         <span class="titlebar-app-icon"><Activity :size="14" :stroke-width="2.35" /></span>
         <strong>TraceLog</strong>
         <span class="titlebar-divider" />

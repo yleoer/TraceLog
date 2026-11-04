@@ -1,11 +1,13 @@
 use std::sync::Arc;
 use tauri::{AppHandle, State};
+use tauri_plugin_clipboard_manager::ClipboardExt;
 use tauri_plugin_dialog::DialogExt;
+use tauri_plugin_opener::OpenerExt;
 use tracelog::{
     error::{AppError, Result},
     logging,
     models::*,
-    service::{export, local, views, Service},
+    service::{export, local, time, uploads, views, Service},
     settings,
 };
 
@@ -30,15 +32,73 @@ local_command!(
     |db, svc| views::gantt(db, &month, svc.config.timezone)
 );
 local_command!(get_settings()->AppSettings,|_db,svc| Ok(settings::public(svc.settings.lock().map_err(|_|AppError::State)?.load()?)));
-local_command!(
-    update_settings(settings: AppSettings) -> AppSettings,
-    |_db, svc| {
-        let store = svc.settings.lock().map_err(|_| AppError::State)?;
-        let merged = store.merge_input(settings)?;
-        store.save(&merged)?;
-        Ok(settings::public(merged))
+macro_rules! remote_command {
+    ($name:ident($($arg:ident:$kind:ty),*) -> $output:ty, |$svc:ident| $body:expr) => {
+        #[tauri::command]
+        pub async fn $name(state:State<'_,Arc<Service>>,$($arg:$kind),*) -> Result<$output> {
+            let $svc=state.inner().clone();
+            let result=$body.await;
+            if let Err(error)=&result {logging::record(&$svc.config.data_dir,&format!("{}：{error}",stringify!($name)));}
+            result
+        }
     }
+}
+remote_command!(
+    update_settings(settings: AppSettings) -> AppSettings,
+    |svc| svc.update_settings(settings)
 );
+remote_command!(import_jira_issue(jira_key: String) -> Issue, |svc| svc
+    .import_jira(&jira_key));
+remote_command!(refresh_jira_issue(jira_key: String) -> Issue, |svc| svc
+    .refresh_jira(&jira_key));
+remote_command!(
+    generate_issue_summary(jira_key: String) -> IssueSummaryResponse,
+    |svc| svc.issue_summary(&jira_key)
+);
+remote_command!(generate_week_summary(week: String) -> WeeklyLog, |svc| svc
+    .week_summary(&week));
+remote_command!(get_time_week(week: String) -> TimeWeekView, |svc| svc
+    .time_week(&week, false));
+remote_command!(refresh_time_week(week: String) -> TimeWeekView, |svc| svc
+    .time_week(&week, true));
+remote_command!(
+    log_tempo_time(request: LogTimeRequest) -> LogTimeResult,
+    |svc| svc.log_time(request)
+);
+local_command!(list_time_work_items()->Vec<TimeWorkItem>,|_db,svc|Ok(time::work_items()));
+local_command!(
+    upload_image(file: uploads::UploadFile) -> UploadedImage,
+    |_db, svc| uploads::save(&svc.config.data_dir.join("uploads"), file)
+);
+local_command!(
+    get_uploaded_image_data_url(url: String) -> UploadedImageData,
+    |_db, svc| uploads::data_url(&svc.config.data_dir.join("uploads"), &url)
+);
+local_command!(
+    delete_uploaded_image(url: String) -> serde_json::Value,
+    |db, svc| Ok(
+        serde_json::json!({"ok":uploads::delete(db,&svc.config.data_dir.join("uploads"),&url)?})
+    )
+);
+local_command!(cleanup_unused_uploaded_images()->UploadedImageCleanup,|db,svc|uploads::cleanup(db,&svc.config.data_dir.join("uploads")));
+
+#[tauri::command]
+pub fn copy_text(app: AppHandle, text: String) -> Result<bool> {
+    app.clipboard()
+        .write_text(text)
+        .map_err(|_| AppError::Remote("复制到剪贴板失败".into()))?;
+    Ok(true)
+}
+#[tauri::command]
+pub fn open_external(app: AppHandle, url: String) -> Result<()> {
+    let parsed = url::Url::parse(&url).map_err(|_| tracelog::error::invalid("链接无效"))?;
+    if !matches!(parsed.scheme(), "https" | "http" | "mailto") {
+        return Err(tracelog::error::invalid("只允许打开网页或邮件链接"));
+    }
+    app.opener()
+        .open_url(url, None::<&str>)
+        .map_err(|_| AppError::Remote("打开链接失败".into()))
+}
 local_command!(list_issues(filter: ListFilter) -> Vec<Issue>, |db, svc| {
     local::list_issues(db, filter)
 });

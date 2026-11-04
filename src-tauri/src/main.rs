@@ -11,6 +11,8 @@ fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             updates::get_update_info,
             updates::install_update,
@@ -50,7 +52,21 @@ fn main() {
             commands::update_week,
             commands::generate_week_draft,
             commands::search,
-            commands::export_file
+            commands::export_file,
+            commands::import_jira_issue,
+            commands::refresh_jira_issue,
+            commands::generate_issue_summary,
+            commands::generate_week_summary,
+            commands::list_time_work_items,
+            commands::get_time_week,
+            commands::refresh_time_week,
+            commands::log_tempo_time,
+            commands::upload_image,
+            commands::get_uploaded_image_data_url,
+            commands::delete_uploaded_image,
+            commands::cleanup_unused_uploaded_images,
+            commands::copy_text,
+            commands::open_external
         ])
         .setup(|app| {
             let config = Config::load();
