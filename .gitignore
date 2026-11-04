@@ -30,3 +30,8 @@ build/windows/*
 *-res.syso
 backend/
 frontend/package.json.md5
+node_modules/
+target/
+src-tauri/gen/
+*.key
+*.key.pub

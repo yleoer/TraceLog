@@ -1,5 +1,11 @@
 # TraceLog
 
+> Rust 迁移分支：正在分阶段迁移到 Tauri 2。当前 Wails 业务应用仍按下文运行，Tauri 骨架只用于升级验收。
+>
+> 安装根目录工具依赖：`npm.cmd ci`。升级验收运行 `./scripts/test-tauri-upgrade.ps1 -KeepArtifacts`，需要 Rust MSVC 工具链、Windows C++ Build Tools 和 WebView2。脚本构建两个签名 NSIS 安装器，在独立目录安装和升级，验证旧进程退出、新版本重启、二进制哈希与数据保留，并清理测试卸载项。
+>
+> Tauri 升级公钥位于 `src-tauri/tauri.conf.json`；本机签名私钥位于 `%USERPROFILE%/.config/tracelog/keys/updater.key`，必须单独备份。正式发布需要将私钥与密码配置为 CI 的 `TAURI_SIGNING_PRIVATE_KEY` 和 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`。升级签名与 Windows Authenticode 代码签名是两件事。
+
 TraceLog 是一个仅面向 Windows amd64 的 Wails 个人桌面工作日志应用，用于集中跟进 Jira Issue、临时需求、每日工作和周报。它会在刷新 Jira 时同步状态历史，沉淀工作周期，并提供月度甘特图、支持图片和有序列表的 Markdown 记录、全局搜索和长期 Markdown/JSON 导出。
 
 ## 技术栈

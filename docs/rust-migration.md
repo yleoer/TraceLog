@@ -1,0 +1,33 @@
+# Rust / Tauri 迁移记录
+
+目标：Windows amd64，Tauri 2 + Rust + 现有 Vue 3 + SQLite，业务数据仅通过原生 IPC 访问。每阶段验收通过后单独使用中文提交说明提交。
+
+| 阶段 | 范围 | 验收 |
+| --- | --- | --- |
+| 1 | Tauri 骨架、官方签名升级、独立安装升级脚本 | 两个实际 NSIS 安装器，旧进程退出、安装目录内新版重启、目标哈希与用户数据保留 |
+| 2 | 配置、SQLite、旧库兼容、设置、模型与日志 | 旧库升级幂等、WAL 一致性备份、标签与搜索回填、凭据保留 |
+| 3 | 本地业务及 Vue 原生调用 | CRUD、事务、日/周聚合、月度甘特、搜索、导出与类型检查 |
+| 4 | Jira、Tempo、AI、图片及桌面能力 | 本地模拟远端验收、分页、状态周期、时间边界、文件与窗口能力 |
+| 5 | 发布、首次迁入、清理 Go/Wails | 连续升级、异常升级、完整 Rust 测试与安装包构建、文档和发布配置 |
+
+## 数据兼容约定
+
+- 保留 `%APPDATA%/TraceLog`、`APP_DATA_DIR`、`DATABASE_PATH` 与现有设置文件格式。
+- 保留 `db/migrations/001_init.sql` 作为唯一初始化 schema；Rust 仅读取 Up 段。
+- 保留旧 goose 元信息，接续启动时的补表、标签来源拆分及搜索回填逻辑。
+- 首次转换先备份，所有结构与索引调整使用事务；不修改正式数据做验收。
+- 图片继续存储相对 `/uploads/` 引用，显示通过原生数据读取或受限资源协议解决。
+
+## 升级与发布约定
+
+- 正式升级使用 HTTPS 和官方强制签名校验；回环 HTTP 更新源仅在 `update-e2e` 构建中启用。
+- 新安装采用用户级 NSIS，更新采用 `passive` 模式；旧 Wails 系统级安装单独提供迁入步骤。
+- 本机生产签名私钥位于 `%USERPROFILE%/.config/tracelog/keys/updater.key`，不进仓库；发布前需要备份并配置 CI Secrets。
+- 不创建或推送 release tag，不发布 GitHub Release，直至用户确认完整变更清单。
+
+## 验证记录
+
+- 基线：`go test ./...` 通过。
+- 阶段 1：`cargo check -p tracelog`、`cargo clippy --all-targets -- -D warnings`、格式与差异检查通过。
+- 阶段 1 真实验收：`0.2.0-rc.1 -> 0.2.0-rc.2` 通过。旧进程退出，新版从原安装目录启动，二进制与同一签名安装器的全新安装结果哈希一致，测试数据保留。
+- 哈希基准必须使用安装器内的二进制：Tauri 会写入 NSIS bundle 类型标记，随后恢复 Cargo 输出，直接比较 `target/release/*.exe` 会出现预期的标记差异。
