@@ -4,7 +4,10 @@
   "version": "0.2.0",
   "identifier": "app.tracelog.desktop",
   "build": {
-    "frontendDist": "../tools/update-probe"
+    "frontendDist": "../frontend/dist/app",
+    "devUrl": "http://127.0.0.1:5173",
+    "beforeDevCommand": "npm.cmd --prefix frontend run dev",
+    "beforeBuildCommand": "npm.cmd --prefix frontend run build"
   },
   "app": {
     "windows": [
@@ -14,11 +17,12 @@
         "width": 1280,
         "height": 860,
         "minWidth": 960,
-        "minHeight": 680
+        "minHeight": 680,
+        "decorations": false
       }
     ],
     "security": {
-      "csp": "default-src 'self'; connect-src ipc: http://ipc.localhost; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:"
+      "csp": "default-src 'self'; connect-src ipc: http://ipc.localhost; style-src 'self' 'unsafe-inline'; script-src 'self' 'wasm-unsafe-eval'; img-src 'self' data: blob:"
     }
   },
   "bundle": {

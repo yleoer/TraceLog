@@ -3,5 +3,6 @@ pub mod database;
 pub mod error;
 pub mod logging;
 pub mod models;
+pub mod service;
 pub mod settings;
 pub mod store;

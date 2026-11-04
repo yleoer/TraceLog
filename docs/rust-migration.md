@@ -33,3 +33,4 @@
 - 哈希基准必须使用安装器内的二进制：Tauri 会写入 NSIS bundle 类型标记，随后恢复 Cargo 输出，直接比较 `target/release/*.exe` 会出现预期的标记差异。
 - 阶段 2：旧库转换/重复打开、WAL 备份、错误回滚、原子保存与凭据保留、搜索引用更新/删除共 4 个集成测试通过；全目标/全特性 Clippy 通过。
 - 阶段 2 真实旧库检查：Go `seed-demo` 生成的 SQLite 副本转换通过，3 个 Issue、6 个 Issue 评论、5 个 TODO、3 个临时需求、4 个临时需求评论、3 个每日记录、1 个周报全部保留，`PRAGMA integrity_check` 返回 `ok`；`cargo test --workspace` 通过。
+- 阶段 3：本地 CRUD、事务失败回滚、删除与搜索清理、时区与 ISO 周、多周期甘特、内容导出共 6 个业务集成测试通过；前端已统一切换 Tauri IPC，类型检查与生产构建通过。Markdown ZIP 内图片使用相对路径，JSON 包含每日记录及临时需求评论。

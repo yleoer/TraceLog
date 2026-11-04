@@ -34,7 +34,7 @@ function Build-Installer([string]$Version) {
   Write-JSON $configPath @{
     productName = 'TraceLog Upgrade Test'; identifier = 'app.tracelog.upgrade-test'; version = $Version
     mainBinaryName = 'TraceLogUpgradeTest'
-    build = @{ frontendDist = (Join-Path $repoRoot 'tools/update-probe') }
+    build = @{ frontendDist = (Join-Path $repoRoot 'tools/update-probe'); beforeBuildCommand = '' }
     plugins = @{ updater = @{ pubkey = (Get-Content -LiteralPath "$testRoot\test.key.pub" -Raw).Trim(); dangerousInsecureTransportProtocol = $true } }
   }
   Invoke-Checked 'npm.cmd' @('run', 'tauri', '--', 'build', '--ci', '--features', 'update-e2e', '--config', $configPath)

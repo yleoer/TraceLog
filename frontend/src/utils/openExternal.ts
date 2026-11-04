@@ -1,9 +1,9 @@
-import { BrowserOpenURL } from '../wailsjs/runtime/runtime'
+import { api } from '../api/client'
 
 export function openExternalURL(url: string) {
   const value = String(url || '').trim()
   if (!isExternalURL(value)) return
-  BrowserOpenURL(value)
+  void api.openExternal(value)
 }
 
 export function openExternalClick(url: string) {

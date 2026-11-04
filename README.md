@@ -1,154 +1,63 @@
 # TraceLog
 
-> Rust 迁移分支：正在分阶段迁移到 Tauri 2。当前 Wails 业务应用仍按下文运行，Tauri 骨架只用于升级验收。
->
-> 安装根目录工具依赖：`npm.cmd ci`。升级验收运行 `./scripts/test-tauri-upgrade.ps1 -KeepArtifacts`，需要 Rust MSVC 工具链、Windows C++ Build Tools 和 WebView2。脚本构建两个签名 NSIS 安装器，在独立目录安装和升级，验证旧进程退出、新版本重启、二进制哈希与数据保留，并清理测试卸载项。
->
-> Tauri 升级公钥位于 `src-tauri/tauri.conf.json`；本机签名私钥位于 `%USERPROFILE%/.config/tracelog/keys/updater.key`，必须单独备份。正式发布需要将私钥与密码配置为 CI 的 `TAURI_SIGNING_PRIVATE_KEY` 和 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`。升级签名与 Windows Authenticode 代码签名是两件事。
->
-> Rust 数据层已实现旧库兼容：首次转换前通过 SQLite Online Backup 备份数据库（包含 WAL 中已提交的数据），并备份设置和图片；转换及索引回填使用事务，保留 goose 元信息，重复启动不会重复转换。备份位于数据目录的 `backups/pre-rust-*`。设置继续使用原有 JSON 格式，保存时原子替换，空凭据保留已有值，返回前端时隐藏凭据。可运行 `cargo test --workspace` 验证 Rust，或 `cargo run --example check-legacy -- <旧版数据库文件>` 在临时副本上检查兼容性。
+TraceLog 是仅面向 Windows amd64 的个人桌面工作日志应用，采用 Rust + Tauri 2 + Vue 3 + SQLite。保留现有 Naive UI 界面和旧版数据格式，业务调用统一经过 `frontend/src/api/client.ts` 的原生 IPC。
 
-TraceLog 是一个仅面向 Windows amd64 的 Wails 个人桌面工作日志应用，用于集中跟进 Jira Issue、临时需求、每日工作和周报。它会在刷新 Jira 时同步状态历史，沉淀工作周期，并提供月度甘特图、支持图片和有序列表的 Markdown 记录、全局搜索和长期 Markdown/JSON 导出。
+当前 Rust 迁移分支已完成签名升级、旧库兼容及本地业务；Jira、Tempo、AI、图片和发布流程正在后续阶段迁移。完整记录见 [迁移记录](docs/rust-migration.md)。
 
-## 技术栈
+## 功能
 
-- 桌面壳：Wails v2
-- 应用逻辑：Go、SQLite、goose migrations
-- 前端界面：Vue 3、Vite、TypeScript、Naive UI、markdown-it
-- 运行时 API：Vue 通过 Wails 原生绑定直接调用 Go
+- Issue、标签、工作周期、评论、TODO 与临时需求管理。
+- 每日记录、今日工作流、ISO 周视图、周报草稿和多周期月度甘特图。
+- SQLite FTS 全局搜索，Markdown、JSON 与包含图片的 Markdown ZIP 导出。
+- 设置原子保存，空凭据保留原值，返回界面时隐藏密钥。
+- Tauri 官方签名更新：下载并校验成功后由 NSIS 接管安装与重启。
 
-TraceLog 不再运行本地 HTTP API、Docker Compose 或独立后端服务。`frontend/src/api/client.ts` 是前端唯一的 API facade，底层只委托给 Wails 生成的绑定。
+## 开发与构建
 
-## 核心功能
-
-- **Jira 同步与 Issue 管理**：通过 Issue Key 导入或刷新 Jira 信息，维护简述、评论、TODO、分析与解决方案等 Markdown 记录；支持筛选、搜索、复制 Jira 编号和标题，以及单项 Markdown 导出。
-- **状态历史与工作周期**：刷新 Jira 时分页读取完整的 Activity History。首次从 `To Do` 进入 `In Progress` 会记录开始时间，首次进入 `Done`、`Resolved`、`Closed` 等完成状态会记录完成时间；重新打开后再次开始和完成会保留为独立周期。
-- **标签管理**：Jira 原始标签与自定义标签分别保存。Issue 列表优先显示自定义标签，没有自定义标签时显示 Jira 标签；输入自定义标签时可匹配已有标签。
-- **月度甘特图**：按月展示 Issue 与临时需求的工作周期，支持月份切换、多段周期、进行中事项和跳转详情。
-- **每日与周视图**：按当天或指定周汇总工作记录、Issue、临时需求和待跟进 TODO，支持生成 Markdown 草稿、AI 总结、编辑下周计划和导出周报。
-- **其他工作流**：支持临时需求跟踪、Tempo Time 查看和提交、全局搜索、AI 简述生成，以及完整 JSON 与 Markdown ZIP 导出。
-
-## 开发
-
-安装前端依赖：
+需要 Windows amd64、Rust stable MSVC、Windows C++ Build Tools、Node.js 和 WebView2。
 
 ```powershell
-cd frontend
 npm.cmd ci
-cd ..
+npm.cmd --prefix frontend ci
+npm.cmd run tauri -- dev
 ```
 
-从仓库根目录启动桌面开发模式：
+开发时 Vite 仅提供界面资源，业务访问仍走原生 IPC。生产构建：
 
 ```powershell
-wails dev
+npm.cmd run tauri -- build
 ```
 
-开发模式下 Wails 会启动 Vite，用于前端热更新。启动日志里显示的 Vite URL 只用于加载本地 UI 资源；应用数据调用仍然走 Wails 原生绑定，不走本地 HTTP。
+安装器输出在 `target/release/bundle/nsis/`。前端构建输出 `frontend/dist/app`，验证后应删除该目录，只保留 `frontend/dist/.gitkeep`；不要提交构建产物。
 
-## 模拟数据
+## 数据和兼容
 
-可以向当前桌面数据库写入一批可重复执行的演示数据：
+默认目录 `%APPDATA%/TraceLog` 包含 `tracelog.db`、`tracelog-settings.json`、`uploads/`、`logs/` 和 `backups/`。支持 `APP_DATA_DIR`、`DATABASE_PATH`、`APP_TIMEZONE`（默认 Asia/Shanghai）。Jira 和 AI 支持原有 `JIRA_*`、`OPENAI_*`、`DEEPSEEK_*` 环境变量，也可在设置页保存。
 
-```powershell
-go run ./cmd/seed-demo
-```
+首次打开旧库前通过 SQLite Online Backup 备份数据库（含 WAL 中已提交数据），并备份设置和图片到 `backups/pre-rust-*`。结构调整和搜索回填在事务内完成，保留旧 goose 元信息，重复启动不会再次转换。仅保留 `db/migrations/001_init.sql`，Rust 仅读取 Up 部分。
 
-默认写入位置是系统用户配置目录下的 `TraceLog/tracelog.db`。数据包含 `TL-1001`、`TL-1002`、`TL-1003`、临时任务、评论、TODO、日记录、周报和搜索索引，方便验证 Dashboard、Issues、Today、Weekly、甘特图、Search 和导出流程。
-
-## 构建
-
-从仓库根目录执行：
-
-```powershell
-npm.cmd --prefix frontend run build
-wails build -clean -debug -nopackage -platform windows/amd64
-Remove-Item -Recurse -Force frontend/dist/app
-```
-
-生产构建会把 `frontend/dist/app` 嵌入 Go 二进制，不需要 Docker、浏览器服务器或本地 HTTP API。
-
-## 发布构建
-
-GitHub Actions 会通过 [.github/workflows/release.yml](.github/workflows/release.yml) 生成 Windows amd64 正式桌面产物。项目不再构建或发布 Linux、macOS 版本。
-
-可以在 GitHub Actions 页面手动运行 `Release Builds` workflow 生成可下载 artifact。要发布到 GitHub Release，先提交发布说明，再创建并推送注释 tag：
-
-```powershell
-$tag = 'v0.1.10'
-git push origin main
-git tag -a $tag -m "发布 $tag"
-git push origin $tag
-```
-
-如需自定义 GitHub Release 文案，先在 `release-notes/` 下创建与 tag 同名的 Markdown 文件，例如 `release-notes/v0.1.9.md`。workflow 会优先使用该文件；如果文件不存在，则回退到 GitHub 自动生成的 release notes。
-
-如需用仓库中的文案更新历史 GitHub Release，确认 `gh` 已登录后执行：
-
-```powershell
-Get-ChildItem release-notes/*.md | ForEach-Object { gh release edit $_.BaseName --notes-file $_.FullName }
-```
-
-workflow 会从根目录构建 Wails 应用并上传：
-
-- Windows amd64 NSIS 安装器：`.exe`
-
-## 数据和配置
-
-桌面数据默认存放在系统用户配置目录下的 `TraceLog` 目录，包含：
-
-- `tracelog.db`
-- `tracelog-settings.json`
-- `uploads/` 下的用户上传图片
-
-可选的开发覆盖环境变量：
-
-- `APP_DATA_DIR`
-- `DATABASE_PATH`
-- `APP_TIMEZONE`
-- `JIRA_BASE_URL`
-- `JIRA_EMAIL`
-- `JIRA_API_TOKEN`
-- `OPENAI_BASE_URL`
-- `OPENAI_API_KEY`
-- `OPENAI_MODEL`
-- `DEEPSEEK_BASE_URL`
-- `DEEPSEEK_API_KEY`
-- `DEEPSEEK_MODEL`
-
-`TRACELOG_UPDATE_URL` 仅用于本地升级验收：它会覆盖 GitHub Release 查询地址，生产环境不应设置此变量。
-
-Jira 和 AI 凭据也可以在 Settings 页面保存。
-
-## 界面说明
-
-- **首页**：按导入时间展示最近导入的 Issues，并集中查看进行中 Issues（包含 In Review、TODO 状态）、临时需求、待跟进 TODO 和本周概览。
-- **Issues**：列表默认按导入时间倒序排列；支持按状态、标签和关键词筛选。详情页展示 Jira 元数据、开始和完成时间；存在多个工作周期时会显示每段周期与重新打开记录。
-- **临时需求**：记录计划外工作，可维护来源、状态、优先级、起止时间和关联 Jira。
-- **今日工作流**：汇总当天更新的 Issues、每日记录、临时需求和 TODO。
-- **周视图**：Issues 仅纳入当周有评论、开始时间或完成时间的项目，不因导入时间而纳入；临时需求和后续 TODO 只在有数据时展示。
-- **甘特图**：显示所选月份内与该月重叠的工作周期，每条横线表示一个开始至完成的周期。
-- **Time**：查看 Tempo 周工时，并按日期范围提交工作日志。
-- **全局搜索与设置**：搜索 Issue、评论、TODO、临时需求和周报；配置 Jira、AI、提示词和导出。
+需要回退旧版时，关闭应用后从同一个备份目录恢复数据库、设置和图片。不要同时运行两个版本写同一个数据库。
 
 ## 验证
 
 ```powershell
-go test ./...
+cargo fmt --all -- --check
+cargo test --workspace
+cargo clippy --workspace --all-targets --all-features -- -D warnings
 npm.cmd --prefix frontend run build
-wails build -clean -debug -nopackage -platform windows/amd64
+cargo run --example check-legacy -- <旧版数据库文件>
 ```
 
-如果 `wails build` 在 Windows 上提示 `TraceLog-dev.exe` 被占用，请先关闭正在运行的 TraceLog 窗口后再执行。
+兼容检查在临时副本上执行，不修改输入数据库。本地业务测试覆盖事务回滚、标签和周期保留、搜索删除、时区、ISO 周、月边界及导出内容。
 
-### Windows 在线升级验收
+## 升级与发布
 
-每个 Windows 发布版本都应在发布前执行一次真实的 `rc.1 -> rc.2` NSIS 升级。脚本会构建两个安装包，在临时目录安装旧版本、启动本地更新源、自动触发升级，并验证进程退出、安装器结果、重启、二进制哈希、更新助手和升级日志。
-
-前提是本机已安装 Wails、NSIS 和 WebView2 开发依赖；建议在 Windows Sandbox 或虚拟机执行。脚本使用用户级测试安装器和临时数据目录，不会覆盖正式安装。
+签名升级公钥位于 `src-tauri/tauri.conf.json`。本机私钥位于 `%USERPROFILE%/.config/tracelog/keys/updater.key`，必须单独备份，不能提交。CI 使用 `TAURI_SIGNING_PRIVATE_KEY` 与 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`；升级签名和 Windows Authenticode 代码签名分别配置。
 
 ```powershell
-.\scripts\test-upgrade.ps1 -KeepArtifacts
+./scripts/test-tauri-upgrade.ps1 -KeepArtifacts
 ```
 
-通过 `-MakensisPath` 可以指定便携版或非标准位置的 `makensis.exe`，通过 `-RunRoot` 可以指定测试证据目录。测试失败时临时目录会保留，脚本会输出证据路径；成功后加 `-KeepArtifacts` 也可保留日志和两个测试安装包。
+脚本使用临时用户级安装和独立数据目录，构建真实签名 NSIS 安装器，验证进程退出、新版重启、安装后二进制哈希及数据保留。`TRACELOG_UPDATE_URL` 仅在 `update-e2e` 构建中允许回环测试源。
+
+旧 Wails 系统级安装需要手动迁入新的用户级安装，不能直接接管原安装登记。正式发布前必须更新 README、列全变更并获得用户确认；创建标签前新增 `release-notes/<tag>.md`，将其作为 Release 文案。此分支尚未发布版本。

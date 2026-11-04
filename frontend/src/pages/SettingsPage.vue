@@ -292,14 +292,7 @@ async function installUpdate() {
 async function startInstallUpdate() {
   installingUpdate.value = true
   try {
-    const result = await api.installUpdate()
-    if (result.message) {
-      const type = !result.started ? 'error' : result.will_quit ? 'warning' : 'success'
-      message[type](result.message)
-    }
-    if (result.started && result.will_quit) {
-      window.setTimeout(() => api.quitForUpdate(), 250)
-    }
+    await api.installUpdate()
   } catch (error) {
     message.error((error as Error).message)
   } finally {

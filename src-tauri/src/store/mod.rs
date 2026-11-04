@@ -4,6 +4,7 @@ use serde::de::DeserializeOwned;
 use serde_json::{Map, Value};
 
 pub mod index;
+pub mod records;
 
 pub fn query<T: DeserializeOwned>(
     db: &Connection,
