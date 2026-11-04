@@ -273,13 +273,6 @@ export interface UpdateInfo {
   release_notes: string
 }
 
-export interface UpdateInstallResult {
-  started: boolean
-  path: string
-  message: string
-  will_quit: boolean
-}
-
 export interface TimeWorkItem {
   key: string
   label: string

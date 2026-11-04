@@ -107,6 +107,10 @@ export async function waitForPendingCalls() {
   while (pendingCalls.size) await Promise.allSettled([...pendingCalls])
 }
 
+export function reportDesktopSmokeTest(result: Record<string, unknown>) {
+  return invoke<void>('desktop_smoke_report', { result })
+}
+
 export const desktopWindow = {
   available: isTauri,
   minimise: () => getCurrentWindow().minimize(),

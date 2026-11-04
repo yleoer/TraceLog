@@ -6,7 +6,7 @@
 - 根目录 Cargo workspace；`src-tauri/src/main.rs` 为入口，`commands.rs` 为 IPC，`service` 为业务层，`store` 为 SQL 层。
 - 前端只能通过 `frontend/src/api/client.ts` 调用原生能力，不引入 REST fallback、本地 HTTP 业务桥或独立服务。
 - 沿用现有工作界面，不添加落地页式 UI。
-- Go/Wails 文件仅在迁移期间保留作行为参照，替代完成后清理。
+- 不恢复 Go/Wails、手工更新助手或旧的独立后端；历史实现可从 Git 查询。
 
 ## 数据与类型
 

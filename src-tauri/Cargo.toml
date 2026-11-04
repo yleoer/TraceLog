@@ -10,8 +10,13 @@ default-run = "TraceLog"
 name = "TraceLog"
 path = "src/main.rs"
 
+[[bin]]
+name = "seed-demo"
+path = "src/bin/seed-demo.rs"
+
 [features]
 update-e2e = []
+desktop-e2e = []
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

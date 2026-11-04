@@ -66,7 +66,8 @@ fn main() {
             commands::delete_uploaded_image,
             commands::cleanup_unused_uploaded_images,
             commands::copy_text,
-            commands::open_external
+            commands::open_external,
+            commands::desktop_smoke_report
         ])
         .setup(|app| {
             let config = Config::load();

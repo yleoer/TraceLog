@@ -146,16 +146,31 @@ pub fn run_acceptance_probe(app: AppHandle) {
         return;
     };
     tauri::async_runtime::spawn(async move {
+        use tauri::Manager;
+        let service = app.state::<std::sync::Arc<tracelog::service::Service>>();
+        let snapshot = service
+            .with_db(|db| {
+                let mut value: serde_json::Value =
+                    serde_json::from_slice(&tracelog::service::export::json(db)?)?;
+                value.as_object_mut().unwrap().remove("exported_at");
+                Ok(value)
+            })
+            .ok();
         let version = app.package_info().version.to_string();
         let _ = std::fs::write(PathBuf::from(&root).join(format!("started-{version}.json")),
-            serde_json::json!({"version": version, "pid": std::process::id(), "exe": std::env::current_exe().ok()}).to_string());
+            serde_json::json!({"version": version, "pid": std::process::id(), "exe": std::env::current_exe().ok(),"snapshot":snapshot}).to_string());
         match get_update_info(app.clone()).await {
             Ok(info) if info.has_update => {
                 let _ = install_update(app.clone())
                     .await
                     .map_err(|e| std::fs::write(PathBuf::from(&root).join("failure.txt"), e));
             }
-            Ok(_) => {}
+            Ok(info) => {
+                let _ = std::fs::write(
+                    PathBuf::from(&root).join(format!("checked-{version}.json")),
+                    serde_json::to_vec(&info).unwrap_or_default(),
+                );
+            }
             Err(e) => {
                 let _ = std::fs::write(PathBuf::from(&root).join("failure.txt"), e);
             }

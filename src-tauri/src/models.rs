@@ -340,15 +340,6 @@ pub struct UpdateInfo {
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(default)]
-pub struct UpdateInstallResult {
-    pub started: bool,
-    pub path: String,
-    pub message: String,
-    pub will_quit: bool,
-}
-
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
-#[serde(default)]
 pub struct TimeWorkItem {
     pub key: String,
     pub label: String,
