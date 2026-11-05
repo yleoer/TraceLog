@@ -2,7 +2,7 @@
 
 TraceLog 是供个人在一台 Windows amd64 机器上使用的桌面工作日志应用，采用 Rust + Tauri 2 + Vue 3 + SQLite。保留现有 Naive UI 界面和旧版数据格式，业务调用统一经过 `frontend/src/api/client.ts` 的原生 IPC。
 
-Rust 迁移分支使用 Tauri 官方升级插件和用户级 NSIS 安装器，保留原有业务界面与数据。完整记录见 [迁移记录](docs/rust-migration.md)。
+v0.2.0 起使用 Tauri 官方升级插件和用户级 NSIS 安装器，保留原有业务界面与数据。完整记录见 [迁移记录](docs/rust-migration.md)，本次变更见 [v0.2.0 发布说明](release-notes/v0.2.0.md)。
 
 ## 功能
 
@@ -89,4 +89,4 @@ GitHub Actions 在分支推送时执行 Rust 格式、快速业务测试、Clipp
 
 迁入失败时关闭新版，保留错误日志，恢复同一次备份的数据库、设置和图片，再重新安装旧版。不要让旧版和新版同时写同一目录。旧版安装登记不能由新安装器直接接管。
 
-正式发布前必须更新 README、列全变更并获得用户确认；创建标签前新增 `release-notes/<tag>.md`，将其作为 Release 文案。此分支尚未发布版本。
+正式发布前必须更新 README、列全变更并获得用户确认；创建标签前新增 `release-notes/<tag>.md`，将其作为 Release 文案。
