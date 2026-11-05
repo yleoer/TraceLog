@@ -116,7 +116,6 @@ import StatusTag from '../components/StatusTag.vue'
 import DayWorkPanel from '../components/DayWorkPanel.vue'
 import { tempStatusLabel } from '../utils/tempTaskDisplay'
 import type { Issue, WeekBounds, WeekView } from '../types'
-import { ClipboardSetText } from '../wailsjs/runtime/runtime'
 
 const MarkdownEditor = defineAsyncComponent(() => import('../components/MarkdownEditor.vue'))
 const route = useRoute()
@@ -312,7 +311,7 @@ function isoWeekToDate(year: number, weekNumber: number) {
 
 async function copyIssueTitle(issue: Issue) {
   try {
-    const copied = await ClipboardSetText(`${issue.jira_key} ${issue.title}`)
+    const copied = await api.copyText(`${issue.jira_key} ${issue.title}`)
     if (!copied) throw new Error('无法写入剪贴板')
     message.success('已复制 Issue 编号和标题')
   } catch (error) {

@@ -1,14 +1,14 @@
 <template>
   <div class="app-shell" :class="{ 'sidebar-collapsed': collapsed }">
     <header class="window-titlebar" @dblclick="handleTitlebarDoubleClick">
-      <div class="titlebar-brand">
+      <div class="titlebar-brand" @mousedown.left="desktopWindow.startDragging()">
         <span class="titlebar-app-icon"><Activity :size="14" :stroke-width="2.35" /></span>
         <strong>TraceLog</strong>
         <span class="titlebar-divider" />
         <span class="titlebar-section">{{ activeItem.label }}</span>
       </div>
 
-      <div class="titlebar-drag-space" />
+      <div class="titlebar-drag-space" @mousedown.left="desktopWindow.startDragging()" />
 
       <div class="titlebar-actions" @dblclick.stop>
         <n-popover v-model:show="themeMenuOpen" trigger="click" placement="bottom-end" :show-arrow="false" :overlap="false">
@@ -113,7 +113,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { NPopover } from 'naive-ui'
-import { Quit, WindowIsMaximised, WindowMinimise, WindowToggleMaximise } from '../wailsjs/runtime/runtime'
+import { desktopWindow } from '../api/client'
 import { useWorkTheme } from '../composables/useWorkTheme'
 import type { WorkThemeKey } from '../composables/useWorkTheme'
 import {
@@ -174,21 +174,21 @@ function isActive(path: string) {
   return activeKey.value === path
 }
 
-function hasWailsRuntime() {
-  return typeof window !== 'undefined' && Boolean((window as Window & { runtime?: unknown }).runtime)
+function hasDesktopRuntime() {
+  return desktopWindow.available()
 }
 
 function minimiseWindow() {
-  if (hasWailsRuntime()) WindowMinimise()
+  if (hasDesktopRuntime()) void desktopWindow.minimise()
 }
 
 function closeWindow() {
-  if (hasWailsRuntime()) Quit()
+  if (hasDesktopRuntime()) void desktopWindow.close()
 }
 
 function toggleMaximise() {
-  if (!hasWailsRuntime()) return
-  WindowToggleMaximise()
+  if (!hasDesktopRuntime()) return
+  void desktopWindow.toggleMaximise()
   window.setTimeout(syncMaximisedState, 100)
 }
 
@@ -197,9 +197,9 @@ function handleTitlebarDoubleClick() {
 }
 
 async function syncMaximisedState() {
-  if (!hasWailsRuntime()) return
+  if (!hasDesktopRuntime()) return
   try {
-    isMaximised.value = await WindowIsMaximised()
+    isMaximised.value = await desktopWindow.isMaximised()
   } catch {
     // Ignore transient runtime errors while the native window is resizing.
   }
@@ -246,7 +246,6 @@ onBeforeUnmount(() => {
   box-shadow: inset 0 -1px 0 rgba(83, 98, 123, 0.045);
   backdrop-filter: blur(28px) saturate(160%);
   -webkit-backdrop-filter: blur(28px) saturate(160%);
-  --wails-draggable: drag;
   user-select: none;
 }
 
@@ -307,7 +306,6 @@ onBeforeUnmount(() => {
   height: 100%;
   align-items: center;
   padding-right: 6px;
-  --wails-draggable: no-drag;
 }
 
 .theme-trigger {

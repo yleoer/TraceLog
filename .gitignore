@@ -25,8 +25,12 @@ build/*
 !build/windows/
 build/windows/*
 !build/windows/icon.ico
-!build/windows/installer/
-!build/windows/installer/project.nsi
 *-res.syso
 backend/
 frontend/package.json.md5
+node_modules/
+target/
+src-tauri/gen/
+*.key
+*.key.pub
+release/

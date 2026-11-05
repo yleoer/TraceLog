@@ -68,7 +68,6 @@ import TypeTag from '../components/TypeTag.vue'
 import PriorityTag from '../components/PriorityTag.vue'
 import { formatDateTime } from '../utils/datetime'
 import { openExternalClick } from '../utils/openExternal'
-import { ClipboardSetText } from '../wailsjs/runtime/runtime'
 
 const route = useRoute()
 const router = useRouter()
@@ -352,7 +351,7 @@ function issueTooltipTitle(title: string) {
 
 async function copyIssueTitle(row: Issue) {
   try {
-    const copied = await ClipboardSetText(`${row.jira_key} ${row.title}`)
+    const copied = await api.copyText(`${row.jira_key} ${row.title}`)
     if (!copied) throw new Error('无法写入剪贴板')
     message.success('已复制 Issue 编号和标题')
   } catch (error) {

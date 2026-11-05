@@ -1,98 +1,34 @@
 # TraceLog Agent 指南
 
-本文件面向在本仓库工作的 AI 助手。开始修改前先阅读本指南，并优先遵守仓库现有代码风格。
+## 项目约定
 
-## 项目概览
+- 这是单人、单机使用的个人项目，优先直接、易维护的实现，不为多用户、多机或假设的并发场景添加通用框架。
+- 仅面向 Windows amd64，技术栈为 Rust + Tauri 2 + Vue 3 + Naive UI + SQLite。
+- 根目录 Cargo workspace；`src-tauri/src/main.rs` 为入口，`commands.rs` 为 IPC，`service` 为业务层，`store` 为 SQL 层。
+- 前端只能通过 `frontend/src/api/client.ts` 调用原生能力，不引入 REST fallback、本地 HTTP 业务桥或独立服务。
+- 沿用现有工作界面，不添加落地页式 UI。
+- 不恢复 Go/Wails、手工更新助手或旧的独立后端；历史实现可从 Git 查询。
 
-- TraceLog 是仅面向 Windows amd64 的根目录 Wails 桌面应用，技术栈为 Go + Wails + Vue 3 + SQLite。
-- 不再保留旧的前端 + 后端 + Docker Compose 架构。
-- Go 入口、Wails 配置、数据库迁移、服务层、store 层都位于仓库根目录结构下。
-- 前端只能通过 `frontend/src/api/client.ts` 调用 Wails 原生绑定。
-- 不要重新引入 REST fallback、`fetch('/api/...')` 或本地 HTTP 桥。
+## 数据与类型
 
-## 目录约定
+- 只保留 `db/migrations/001_init.sql`，Rust 仅读取 Up 段；不恢复多段历史迁移或 sqlc。
+- 修改 schema 同步 SQL/scan、Rust models、前端 types、测试与 seed。
+- 修改 IPC 参数和模型后同步 `client.ts` 与 `frontend/src/types/index.ts`。
+- 网络请求期间不得持有 SQLite 锁；异步结果只写回需要更新的业务字段，保留用户内容。不添加通用并发冲突检测或字段合并框架。
+- 不修改正式用户数据做验证；旧库迁移必须先一致性备份、事务执行并支持重复启动。
 
-- `main.go`、`assets.go`：Wails 应用入口和嵌入资源。
-- `internal/desktop`：Wails 暴露给前端的应用接口。
-- `internal/service`：业务逻辑、验证、导出、搜索索引、周报生成等。
-- `internal/store`：SQLite 读写层，当前使用手写 SQL。
-- `internal/db`：数据库打开和 goose 迁移执行。
-- `db/migrations/001_init.sql`：唯一初始化迁移文件。
-- `frontend/src/api/client.ts`：前端调用 Wails 原生绑定的唯一入口。
-- `frontend/src/wailsjs`：Wails 生成绑定，修改 Go 暴露类型后需要同步生成或谨慎更新。
-- `cmd/seed-demo`：模拟数据填充命令。
+## 文档与验证
 
-## 数据库约定
+- 用户可见功能、配置、构建或发布流程有变化时必须更新 README。
+- Rust 修改后运行 `cargo fmt --all`、`cargo test --workspace` 和 `cargo clippy --workspace --all-targets --all-features -- -D warnings`。
+- 前端或 IPC 修改后运行 `npm.cmd --prefix frontend run build`。
+- 验证后清理 `frontend/dist/app`；删除前确认绝对路径位于当前工作区。`frontend/dist` 只保留 `.gitkeep`。
+- 保留核心业务和已修复问题的快速测试，不扩展故障注入、并发竞争或攻击输入矩阵。常规改动不运行真实安装、连续升降级或桌面端到端验收；只有直接修改安装或升级机制且需要确认时，才做有针对性的手工检查。
+- 不为了重复验收构建多个版本的安装包；普通修改完成必要检查后即可提交，不默认重新生成正式安装器。
 
-- 当前迁移目录只保留 `db/migrations/001_init.sql`。
-- 不要新增多段历史迁移，除非用户明确要求恢复增量迁移模式。
-- 修改 schema 时，同步更新：
-  - `db/migrations/001_init.sql`
-  - `internal/store` 中对应 SQL 和 scan 逻辑
-  - `internal/service/models.go`
-  - `frontend/src/types/index.ts`
-  - `frontend/src/wailsjs/go/models.ts`
-  - 相关测试和 seed 数据
-- 本项目不再使用 sqlc；不要恢复 `db/query` 或 `sqlc.yaml`。
+## Git 与产物
 
-## 前端约定
-
-- 前端 API 调用统一经过 `frontend/src/api/client.ts`。
-- 页面组件应沿用现有 Vue + Naive UI + Tailwind 风格。
-- 不要添加落地页式 UI；功能页面应直接呈现可用工作界面。
-- 修改 Wails 暴露模型后，确认前端类型和绑定文件一致。
-- 构建会生成 `frontend/dist/app`，验证后必须清理；`frontend/dist` 只保留 `.gitkeep`。
-
-## 文档约定
-
-- 新增功能，或修改已有功能的用户可见行为、使用方式、配置方式、构建方式或发布流程时，必须同步更新 `README.md`。
-- 创建发布版本前，核对 `README.md` 是否已如实反映本次功能与流程变更。
-
-## Go 约定
-
-- 业务规则放在 `internal/service`，数据库细节放在 `internal/store`。
-- Store 层 SQL 字段顺序必须和 scan 顺序保持一致。
-- 修改 Go 文件后运行 `gofmt`。
-- 不要把构建产物、缓存或本地数据提交进仓库。
-
-## 验证命令
-
-常规修改后优先运行：
-
-```powershell
-go test ./...
-```
-
-涉及前端或 Wails 绑定时运行：
-
-```powershell
-npm run build
-```
-
-命令目录：
-
-```powershell
-cd frontend
-npm run build
-```
-
-前端构建后清理：
-
-```powershell
-Remove-Item -Recurse -Force frontend/dist/app
-```
-
-如需验证模拟数据：
-
-```powershell
-go run ./cmd/seed-demo
-```
-
-## Git 和产物
-
-- 不要提交 `frontend/dist/app`。
-- `build/appicon.png` 和 `build/windows/icon.ico` 是应用图标资源，可以提交。
-- 其他 `build/` 产物继续忽略。
-- 在已有未提交改动时，不要回滚用户改动；只修改和当前任务相关的文件。
-- 如需创建 git commit，提交说明必须使用中文：第一段先总结本次修改，随后详细罗列每一项修改。
-- 如需提交 release 版本，必须先按功能和修改类型完整罗列所有变更，并等待用户确认后再提交；创建标签前必须新增对应的 `release-notes/<tag>.md`，并以该文件作为 GitHub Release 文案。
+- 每完成一个迁移阶段进行一次 commit，提交说明用中文：首段总结，随后逐项列出修改。
+- 不回滚用户已有改动，不提交构建产物、缓存、密钥或本地数据。
+- `build/appicon.png` 和 `build/windows/icon.ico` 是可提交的图标资源；其他 build 产物忽略。
+- 创建发布版本前完整列出功能与变更类型并等待用户确认；创建标签前新增 `release-notes/<tag>.md`，以该文件作为 GitHub Release 文案。
