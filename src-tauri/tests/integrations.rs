@@ -34,6 +34,8 @@ impl Server {
                     thread::sleep(Duration::from_millis(5));
                     continue;
                 };
+                // Windows accept 会继承监听 socket 的非阻塞模式。
+                socket.set_nonblocking(false).unwrap();
                 socket
                     .set_read_timeout(Some(Duration::from_secs(3)))
                     .unwrap();
@@ -78,7 +80,10 @@ impl Server {
 impl Drop for Server {
     fn drop(&mut self) {
         self.stop.store(true, Ordering::Relaxed);
-        self.worker.take().unwrap().join().unwrap();
+        let result = self.worker.take().unwrap().join();
+        if !thread::panicking() {
+            result.unwrap();
+        }
     }
 }
 fn settings(service: &Service, url: &str) {
@@ -95,6 +100,114 @@ fn settings(service: &Service, url: &str) {
 }
 fn change(at: &str, from: &str, to: &str) -> Value {
     json!({"created":at,"items":[{"field":"status","fromString":from,"toString":to}]})
+}
+
+#[tokio::test]
+async fn jira_optional_fields_failure_falls_back_but_authentication_still_fails() {
+    for status in [404, 503, 401, 403] {
+        let root = tempfile::tempdir().unwrap();
+        let service = Service::new(Config::isolated(root.path().into())).unwrap();
+        let server = Server::new(move |headers, _| {
+            if headers.contains("/field ") {
+                return (status, json!({}));
+            }
+            assert!(!matches!(status, 401 | 403));
+            if headers.contains("/changelog?") {
+                return (200, json!({"values":[],"isLast":true}));
+            }
+            (
+                200,
+                json!({"fields":{"summary":"可导入的事项","fixVersions":[{"name":"fallback-release"}]}}),
+            )
+        });
+        settings(&service, &server.url);
+        let imported = service.import_jira("TL-1001").await;
+        if matches!(status, 401 | 403) {
+            assert!(imported.unwrap_err().to_string().contains("身份验证"));
+        } else {
+            assert!(imported.unwrap().background_md.contains("fallback-release"));
+        }
+    }
+}
+
+#[tokio::test]
+async fn settings_validation_allows_other_saves_and_merges_latest_user_changes() {
+    let root = tempfile::tempdir().unwrap();
+    let service = Arc::new(Service::new(Config::isolated(root.path().into())).unwrap());
+    let edit = service.clone();
+    let server = Server::new(move |headers, _| {
+        assert!(headers.contains("/myself "));
+        let service = edit.clone();
+        let (send, receive) = std::sync::mpsc::channel();
+        thread::spawn(move || {
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap();
+            let mut input = service.load_settings().unwrap();
+            input.prompts.weekly_summary = "验证期间保存的提示词".into();
+            input.openai.model = "concurrent-model".into();
+            let _ = send.send(runtime.block_on(service.update_settings(input)));
+        });
+        receive
+            .recv_timeout(Duration::from_secs(3))
+            .expect("网络等待期间设置保存不应被锁阻塞")
+            .unwrap();
+        (200, json!({"accountId":"resolved-account"}))
+    });
+    settings(&service, &server.url);
+    let mut input = service.load_settings().unwrap();
+    input.tempo.api_token = "changed-tempo-token".into();
+    input.openai.base_url = "https://example.com/v1".into();
+    service.update_settings(input).await.unwrap();
+    let saved = service.load_settings().unwrap();
+    assert_eq!(saved.tempo.api_token, "changed-tempo-token");
+    assert_eq!(saved.tempo.author_account_id, "resolved-account");
+    assert_eq!(saved.openai.base_url, "https://example.com/v1");
+    assert_eq!(saved.openai.model, "concurrent-model");
+    assert_eq!(saved.prompts.weekly_summary, "验证期间保存的提示词");
+
+    let mut input = saved;
+    input.tempo.author_account_id.clear();
+    service.settings.lock().unwrap().save(&input).unwrap();
+    service.tempo_settings().await.unwrap();
+    assert_eq!(
+        service.load_settings().unwrap().tempo.author_account_id,
+        "resolved-account"
+    );
+}
+
+#[tokio::test]
+async fn account_validation_does_not_save_a_stale_identity_after_credentials_change() {
+    for resolve_only in [false, true] {
+        let root = tempfile::tempdir().unwrap();
+        let service = Arc::new(Service::new(Config::isolated(root.path().into())).unwrap());
+        let edit = service.clone();
+        let server = Server::new(move |_, _| {
+            let store = edit.settings.lock().unwrap();
+            let mut latest = store.load().unwrap();
+            latest.jira.api_token = "newer-jira-token".into();
+            latest.prompts.weekly_summary = "保留最新设置".into();
+            store.save(&latest).unwrap();
+            (200, json!({"accountId":"stale-account"}))
+        });
+        settings(&service, &server.url);
+        let mut input = service.load_settings().unwrap();
+        let result = if resolve_only {
+            input.tempo.author_account_id.clear();
+            service.settings.lock().unwrap().save(&input).unwrap();
+            service.tempo_settings().await
+        } else {
+            input.tempo.api_token = "pending-tempo-token".into();
+            service.update_settings(input).await
+        };
+        assert!(result.unwrap_err().to_string().contains("设置已变化"));
+        let saved = service.load_settings().unwrap();
+        assert_eq!(saved.jira.api_token, "newer-jira-token");
+        assert_eq!(saved.tempo.api_token, "test-tempo-secret");
+        assert_ne!(saved.tempo.author_account_id, "stale-account");
+        assert_eq!(saved.prompts.weekly_summary, "保留最新设置");
+    }
 }
 
 #[tokio::test]

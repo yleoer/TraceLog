@@ -18,6 +18,108 @@ fn issue(key: &str) -> Issue {
 }
 
 #[test]
+fn first_week_includes_completion_dates_and_converts_to_the_configured_timezone() {
+    let root = tempfile::tempdir().unwrap();
+    let db = database::open(&Config::isolated(root.path().into())).unwrap();
+    local::save_issue(&db, None, issue("TL-1001"), false).unwrap();
+    db.execute("UPDATE issues SET completed_at='2026-06-07T16:30:00Z'", [])
+        .unwrap();
+    assert_eq!(
+        views::week_bounds(&db, Shanghai).unwrap().first_week,
+        "2026-W24"
+    );
+    assert_eq!(
+        views::week_bounds(&db, chrono_tz::UTC).unwrap().first_week,
+        "2026-W23"
+    );
+
+    let task = local::save_task(
+        &db,
+        0,
+        TempTask {
+            title: "历史完成的需求".into(),
+            completed_at: "2026-06-01T00:00:00+08:00".into(),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        views::week_bounds(&db, Shanghai).unwrap().first_week,
+        "2026-W23"
+    );
+    local::delete_task(&db, task.id).unwrap();
+    local::create_day(
+        &db,
+        DayEntry {
+            date: "2026-05-31".into(),
+            content_md: "日期记录使用本地日历".into(),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        views::week_bounds(&db, Shanghai).unwrap().first_week,
+        "2026-W22"
+    );
+}
+
+#[test]
+fn weekly_activity_uses_instants_for_fractional_seconds_and_timezone_offsets() {
+    let root = tempfile::tempdir().unwrap();
+    let db = database::open(&Config::isolated(root.path().into())).unwrap();
+    for key in ["TL-1001", "TL-1002"] {
+        local::save_issue(&db, None, issue(key), false).unwrap();
+    }
+    for (key, at) in [
+        ("TL-1001", "2026-05-31T16:00:00.000Z"),
+        ("TL-1001", "2026-06-01T00:00:00+08:00"),
+        ("TL-1002", "2026-06-07T16:00:00.000Z"),
+    ] {
+        local::save_issue_event(
+            &db,
+            Some(key),
+            0,
+            IssueEvent {
+                event_type: "note".into(),
+                content_md: at.into(),
+                happened_at: at.into(),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        local::save_todo(
+            &db,
+            Some(key),
+            0,
+            IssueTodo {
+                content: at.into(),
+                due_at: at.into(),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        local::save_task(
+            &db,
+            0,
+            TempTask {
+                title: at.into(),
+                started_at: at.into(),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    }
+    let view = views::week(&db, "2026-W23", Shanghai).unwrap();
+    assert_eq!(view.issues.len(), 1);
+    assert_eq!(view.issues[0].jira_key, "TL-1001");
+    assert_eq!(view.events.len(), 2);
+    assert_eq!(view.todos.len(), 2);
+    assert_eq!(view.temp_tasks.len(), 2);
+    assert_eq!(view.days[0].comments.len(), 2);
+    assert!(view.days[1..].iter().all(|day| day.comments.is_empty()));
+}
+
+#[test]
 fn issue_edits_preserve_remote_tags_periods_and_allow_clearing_custom_tags() {
     let root = tempfile::tempdir().unwrap();
     let db = database::open(&Config::isolated(root.path().into())).unwrap();

@@ -11,42 +11,43 @@ use crate::{
 
 impl Service {
     pub async fn update_settings(&self, input: AppSettings) -> Result<AppSettings> {
-        let _write = self.settings_write.lock().await;
-        let existing = self.load_settings()?;
-        let mut next = self
-            .settings
-            .lock()
-            .map_err(|_| AppError::State)?
-            .merge_input(input)?;
+        let (existing, mut next) = {
+            let store = self.settings.lock().map_err(|_| AppError::State)?;
+            (store.load()?, store.merge_input(input)?)
+        };
         if !matches!(next.ai.provider.as_str(), "openai" | "deepseek") {
             return Err(invalid("AI 服务必须是 openai 或 deepseek"));
         }
-        if !next.tempo.api_token.is_empty()
-            && (next.tempo.api_token != existing.tempo.api_token
-                || next.jira.email != existing.jira.email
-                || next.jira.api_token != existing.jira.api_token
-                || next.jira.base_url != existing.jira.base_url)
-        {
+        let validate_author =
+            !next.tempo.api_token.is_empty() && tempo_identity(&next) != tempo_identity(&existing);
+        if validate_author {
             next.tempo.author_account_id = self.jira_author(&next).await?;
         }
-        self.settings
-            .lock()
-            .map_err(|_| AppError::State)?
-            .save(&next)?;
-        Ok(settings::public(next))
+        let store = self.settings.lock().map_err(|_| AppError::State)?;
+        if validate_author && tempo_identity(&store.load()?) != tempo_identity(&existing) {
+            return Err(invalid("验证期间账户设置已变化，请重新保存"));
+        }
+        let merged = store.merge_changes(&existing, &next)?;
+        store.save(&merged)?;
+        Ok(settings::public(merged))
     }
 
     pub async fn tempo_settings(&self) -> Result<AppSettings> {
-        let _write = self.settings_write.lock().await;
-        let mut settings = self.load_settings()?;
-        if settings.tempo.author_account_id.is_empty() {
-            settings.tempo.author_account_id = self.jira_author(&settings).await?;
-            self.settings
-                .lock()
-                .map_err(|_| AppError::State)?
-                .save(&settings)?;
+        let snapshot = self.load_settings()?;
+        if !snapshot.tempo.author_account_id.is_empty() {
+            return Ok(snapshot);
         }
-        Ok(settings)
+        let author = self.jira_author(&snapshot).await?;
+        let store = self.settings.lock().map_err(|_| AppError::State)?;
+        let mut latest = store.load()?;
+        if tempo_identity(&latest) != tempo_identity(&snapshot) {
+            return Err(invalid("验证期间账户设置已变化，请重试"));
+        }
+        if latest.tempo.author_account_id.is_empty() {
+            latest.tempo.author_account_id = author;
+            store.save(&latest)?;
+        }
+        Ok(latest)
     }
 
     async fn chat(&self, settings: &AppSettings, prompt: &str, content: String) -> Result<String> {
@@ -105,4 +106,13 @@ impl Service {
             views::save_week(db, &view.log.week, current, self.config.timezone)
         })
     }
+}
+
+fn tempo_identity(settings: &AppSettings) -> (&str, &str, &str, &str) {
+    (
+        &settings.jira.base_url,
+        &settings.jira.email,
+        &settings.jira.api_token,
+        &settings.tempo.api_token,
+    )
 }

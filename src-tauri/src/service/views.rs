@@ -49,11 +49,37 @@ pub fn list_weeks(db: &Connection) -> Result<Vec<WeeklyLog>> {
 
 pub fn week_bounds(db: &Connection, timezone: Tz) -> Result<WeekBounds> {
     let current = current_week(timezone);
-    let first: Option<String> = db.query_row("SELECT min(value) FROM (SELECT min(created_at) AS value FROM issues UNION ALL SELECT min(started_at) FROM issues WHERE started_at<>'' UNION ALL SELECT min(happened_at) FROM issue_events UNION ALL SELECT min(due_at) FROM issue_todos WHERE due_at<>'' UNION ALL SELECT min(updated_at) FROM issue_todos WHERE done=1 UNION ALL SELECT min(created_at) FROM temp_tasks UNION ALL SELECT min(started_at) FROM temp_tasks WHERE started_at<>'' UNION ALL SELECT min(happened_at) FROM temp_task_events UNION ALL SELECT min(happened_at) FROM activity_events UNION ALL SELECT min(date) FROM day_entries)",[],|r| r.get(0))?;
+    let first: Option<String> = db.query_row(
+        "SELECT strftime('%Y-%m-%dT%H:%M:%SZ', min(value)) FROM (
+          SELECT min(julianday(created_at)) AS value FROM issues
+          UNION ALL SELECT min(julianday(updated_at)) FROM issues
+          UNION ALL SELECT min(julianday(started_at)) FROM issues
+          UNION ALL SELECT min(julianday(completed_at)) FROM issues
+          UNION ALL SELECT min(julianday(happened_at)) FROM issue_events
+          UNION ALL SELECT min(julianday(due_at)) FROM issue_todos
+          UNION ALL SELECT min(julianday(updated_at)) FROM issue_todos WHERE done=1
+          UNION ALL SELECT min(julianday(created_at)) FROM temp_tasks
+          UNION ALL SELECT min(julianday(updated_at)) FROM temp_tasks
+          UNION ALL SELECT min(julianday(started_at)) FROM temp_tasks
+          UNION ALL SELECT min(julianday(completed_at)) FROM temp_tasks
+          UNION ALL SELECT min(julianday(happened_at)) FROM temp_task_events
+          UNION ALL SELECT min(julianday(happened_at)) FROM activity_events
+        )",
+        [],
+        |r| r.get(0),
+    )?;
     let mut first_week = first
-        .and_then(|v| NaiveDate::parse_from_str(v.get(..10)?, "%Y-%m-%d").ok())
-        .map(|d| d.format("%G-W%V").to_string())
+        .and_then(|v| DateTime::parse_from_rfc3339(&v).ok())
+        .map(|d| d.with_timezone(&timezone).format("%G-W%V").to_string())
         .unwrap_or_else(|| current.clone());
+    let first_day: Option<String> =
+        db.query_row("SELECT min(date) FROM day_entries", [], |r| r.get(0))?;
+    if let Some(week) = first_day
+        .and_then(|v| NaiveDate::parse_from_str(&v, "%Y-%m-%d").ok())
+        .map(|d| d.format("%G-W%V").to_string())
+    {
+        first_week = first_week.min(week);
+    }
     for log in list_weeks(db)? {
         if week_start(&log.week, timezone).is_ok() && log.week < first_week {
             first_week = log.week;
@@ -84,7 +110,7 @@ pub fn week(db: &Connection, requested: &str, timezone: Tz) -> Result<WeekView> 
         Err(error) => return Err(error),
     };
     let issues = issues_between(db, &from, &to, false)?;
-    let events=store::query(db,"SELECT * FROM issue_events WHERE happened_at>=? AND happened_at<? ORDER BY happened_at DESC",params![from,to])?;
+    let events=store::query(db,"SELECT * FROM issue_events WHERE julianday(happened_at)>=julianday(?) AND julianday(happened_at)<julianday(?) ORDER BY julianday(happened_at) DESC",params![from,to])?;
     let temp_tasks = tasks_between(db, &from, &to)?;
     let todos = todos_between(db, &from, &to)?;
     let (done, active) = classify(&issues, &temp_tasks, &todos);
@@ -160,7 +186,7 @@ pub fn today(db: &Connection, timezone: Tz) -> Result<TodayWorkflow> {
     let issues = issues_between(db, &from, &to, true)?;
     let temp_tasks = tasks_between(db, &from, &to)?;
     let todos = todos_between(db, &from, &to)?;
-    let events=store::query(db,"SELECT * FROM issue_events WHERE happened_at>=? AND happened_at<? ORDER BY happened_at DESC",params![from,to])?;
+    let events=store::query(db,"SELECT * FROM issue_events WHERE julianday(happened_at)>=julianday(?) AND julianday(happened_at)<julianday(?) ORDER BY julianday(happened_at) DESC",params![from,to])?;
     let (done, active) = classify(&issues, &temp_tasks, &todos);
     let weekly_draft = markdown::workflow(&WeekView {
         issues: issues.clone(),
@@ -187,7 +213,7 @@ fn issues_between(
     end: &str,
     include_import: bool,
 ) -> Result<Vec<Issue>> {
-    let mut issues:Vec<Issue>=store::query(db,"SELECT i.* FROM issues i WHERE EXISTS(SELECT 1 FROM issue_events e WHERE e.issue_id=i.id AND e.happened_at>=?1 AND e.happened_at<?2) OR (i.started_at>=?1 AND i.started_at<?2) OR (i.completed_at>=?1 AND i.completed_at<?2) OR (?3 AND ((i.created_at>=?1 AND i.created_at<?2) OR (i.updated_at>=?1 AND i.updated_at<?2))) ORDER BY i.updated_at DESC",params![start,end,include_import])?;
+    let mut issues:Vec<Issue>=store::query(db,"SELECT i.* FROM issues i WHERE EXISTS(SELECT 1 FROM issue_events e WHERE e.issue_id=i.id AND julianday(e.happened_at)>=julianday(?1) AND julianday(e.happened_at)<julianday(?2)) OR (julianday(i.started_at)>=julianday(?1) AND julianday(i.started_at)<julianday(?2)) OR (julianday(i.completed_at)>=julianday(?1) AND julianday(i.completed_at)<julianday(?2)) OR (?3 AND ((julianday(i.created_at)>=julianday(?1) AND julianday(i.created_at)<julianday(?2)) OR (julianday(i.updated_at)>=julianday(?1) AND julianday(i.updated_at)<julianday(?2)))) ORDER BY i.updated_at DESC",params![start,end,include_import])?;
     for issue in &mut issues {
         issue.work_periods = local::periods(db, issue.id)?;
     }
@@ -195,11 +221,11 @@ fn issues_between(
 }
 
 fn tasks_between(db: &Connection, start: &str, end: &str) -> Result<Vec<TempTask>> {
-    store::query(db,"SELECT * FROM temp_tasks WHERE (created_at>=?1 AND created_at<?2) OR (updated_at>=?1 AND updated_at<?2) OR (started_at>=?1 AND started_at<?2) OR (completed_at>=?1 AND completed_at<?2) ORDER BY updated_at DESC",params![start,end])
+    store::query(db,"SELECT * FROM temp_tasks WHERE (julianday(created_at)>=julianday(?1) AND julianday(created_at)<julianday(?2)) OR (julianday(updated_at)>=julianday(?1) AND julianday(updated_at)<julianday(?2)) OR (julianday(started_at)>=julianday(?1) AND julianday(started_at)<julianday(?2)) OR (julianday(completed_at)>=julianday(?1) AND julianday(completed_at)<julianday(?2)) ORDER BY updated_at DESC",params![start,end])
 }
 
 fn todos_between(db: &Connection, start: &str, end: &str) -> Result<Vec<IssueTodo>> {
-    store::query(db,"SELECT t.*,i.jira_key FROM issue_todos t JOIN issues i ON i.id=t.issue_id WHERE (t.due_at>=?1 AND t.due_at<?2) OR (t.done=1 AND t.updated_at>=?1 AND t.updated_at<?2) ORDER BY t.done,CASE WHEN t.due_at='' THEN 1 ELSE 0 END,t.due_at,t.updated_at DESC",params![start,end])
+    store::query(db,"SELECT t.*,i.jira_key FROM issue_todos t JOIN issues i ON i.id=t.issue_id WHERE (julianday(t.due_at)>=julianday(?1) AND julianday(t.due_at)<julianday(?2)) OR (t.done=1 AND julianday(t.updated_at)>=julianday(?1) AND julianday(t.updated_at)<julianday(?2)) ORDER BY t.done,CASE WHEN t.due_at='' THEN 1 ELSE 0 END,julianday(t.due_at),t.updated_at DESC",params![start,end])
 }
 
 pub fn is_active(status: &str) -> bool {
@@ -258,7 +284,7 @@ pub fn days(db: &Connection, start: NaiveDate, count: i64, timezone: Tz) -> Resu
       UNION ALL SELECT 'issue',t.id,'todo_done','完成 TODO：'||t.content,t.updated_at,i.id,i.jira_key,i.title FROM issue_todos t JOIN issues i ON i.id=t.issue_id WHERE t.done=1
       UNION ALL SELECT 'issue',0,'created','',i.created_at,i.id,i.jira_key,i.title FROM issues i WHERE NOT EXISTS(SELECT 1 FROM activity_events a WHERE a.source='issue' AND a.ref_id=i.id AND a.event_type='created')
       UNION ALL SELECT 'temp_task',0,'created','',t.created_at,t.id,'',t.title FROM temp_tasks t WHERE NOT EXISTS(SELECT 1 FROM activity_events a WHERE a.source='temp_task' AND a.ref_id=t.id AND a.event_type='created')
-    ) WHERE happened_at>=? AND happened_at<? ORDER BY happened_at";
+    ) WHERE julianday(happened_at)>=julianday(?) AND julianday(happened_at)<julianday(?) ORDER BY julianday(happened_at)";
     let comments: Vec<DayComment> = store::query(db, sql, params![from, to])?;
     let entries: Vec<DayEntry> = store::query(
         db,

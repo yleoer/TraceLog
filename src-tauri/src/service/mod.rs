@@ -22,7 +22,6 @@ pub struct Service {
     pub database: Mutex<Connection>,
     pub settings: Mutex<SettingsStore>,
     pub http: reqwest::Client,
-    pub settings_write: tokio::sync::Mutex<()>,
     pub time_write: tokio::sync::Mutex<()>,
 }
 
@@ -41,7 +40,6 @@ impl Service {
                 .redirect(reqwest::redirect::Policy::none())
                 .build()
                 .map_err(|_| AppError::Remote("无法初始化网络客户端".into()))?,
-            settings_write: tokio::sync::Mutex::new(()),
             time_write: tokio::sync::Mutex::new(()),
         })
     }

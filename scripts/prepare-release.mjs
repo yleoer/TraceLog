@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync, copyFileSync, mkdirSync, writeFileSync } from 'node:fs'
+import { readFileSync, existsSync, copyFileSync, mkdirSync, writeFileSync } from 'node:fs'
 import { resolve, basename } from 'node:path'
 
 export function prepareRelease({ root, tag, repository, bundleDir, outputDir }) {
@@ -10,9 +10,8 @@ export function prepareRelease({ root, tag, repository, bundleDir, outputDir }) 
   if (!/^[\w.-]+\/[\w.-]+$/.test(repository)) throw new Error('GitHub 仓库名称无效')
   const notes = readFileSync(resolve(root, `release-notes/${tag}.md`), 'utf8').trim()
   if (!notes) throw new Error('必须提供非空的版本发布说明')
-  const installers = readdirSync(bundleDir).filter(name => name.endsWith('-setup.exe') && name.includes(`_${version}_x64`))
-  if (installers.length !== 1) throw new Error('必须恰好存在一个匹配当前版本的 Windows x64 安装器')
-  const source = resolve(bundleDir, installers[0])
+  const source = resolve(bundleDir, `${config.productName}_${version}_x64-setup.exe`)
+  if (!existsSync(source)) throw new Error('缺少当前产品及版本的 Windows x64 安装器')
   const signature = readFileSync(`${source}.sig`, 'utf8').trim()
   const decoded = Buffer.from(signature, 'base64').toString('utf8')
   if (!decoded.startsWith('untrusted comment:') || !decoded.includes('trusted comment:')) throw new Error('缺少有效格式的 Tauri 签名')

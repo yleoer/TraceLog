@@ -11,24 +11,24 @@ use chrono::{DateTime, Utc};
 use serde_json::Value;
 
 impl Service {
+    fn jira_request(&self, settings: &AppSettings, path: &str) -> Result<reqwest::RequestBuilder> {
+        let jira = &settings.jira;
+        if jira.base_url.is_empty() || jira.email.is_empty() || jira.api_token.is_empty() {
+            return Err(invalid("请先配置 Jira 地址、邮箱和 API Token"));
+        }
+        Ok(self
+            .http
+            .get(remote::endpoint(&jira.base_url, path)?)
+            .basic_auth(&jira.email, Some(&jira.api_token)))
+    }
+
     pub async fn jira_get(
         &self,
         settings: &AppSettings,
         path: &str,
         query: &[(&str, String)],
     ) -> Result<Value> {
-        let jira = &settings.jira;
-        if jira.base_url.is_empty() || jira.email.is_empty() || jira.api_token.is_empty() {
-            return Err(invalid("请先配置 Jira 地址、邮箱和 API Token"));
-        }
-        remote::json(
-            self.http
-                .get(remote::endpoint(&jira.base_url, path)?)
-                .basic_auth(&jira.email, Some(&jira.api_token))
-                .query(query),
-            "Jira",
-        )
-        .await
+        remote::json(self.jira_request(settings, path)?.query(query), "Jira").await
     }
 
     pub async fn jira_author(&self, settings: &AppSettings) -> Result<String> {
@@ -46,7 +46,10 @@ impl Service {
             return Err(invalid("Jira 编号格式无效"));
         }
         let settings = self.load_settings()?;
-        let fields = self.jira_get(&settings, "/rest/api/3/field", &[]).await?;
+        let fields =
+            remote::optional_json(self.jira_request(&settings, "/rest/api/3/field")?, "Jira")
+                .await?
+                .unwrap_or(Value::Null);
         let custom = fields
             .as_array()
             .and_then(|items| {

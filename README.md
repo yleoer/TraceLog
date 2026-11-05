@@ -10,8 +10,10 @@ Rust 迁移分支使用 Tauri 官方升级插件和用户级 NSIS 安装器，�
 - 每日记录、今日工作流、ISO 周视图、周报草稿和多周期月度甘特图。
 - SQLite FTS 全局搜索，Markdown、JSON 与包含图片的 Markdown ZIP 导出。
 - 设置原子保存，空凭据保留原值，返回界面时隐藏密钥。
+  Jira 账户验证期间仍可保存其他设置，验证完成后按修改字段合并最新内容；期间账户凭据发生变化时要求重试，避免保存过期的账户 ID。
 - Tauri 官方签名更新：下载并校验成功后由 NSIS 接管安装与重启。
 - Jira 导入预览与刷新，完整状态历史分页、重开周期、Release Requested 字段及 ADF 转 Markdown；刷新保留用户备注和自定义标签。
+  可选字段元数据接口发生非认证 HTTP 错误时使用 `fixVersions` 继续导入，401/403 仍报告身份验证失败。
 - Tempo 周工时缓存与主动刷新，允许事项的日期范围提交（最多 31 天、每天 1–8 整数小时），按已有工时顺延开始时间，逐日报告成功和失败。
 - OpenAI 兼容服务和 DeepSeek 的 Issue 简述、周总结及自定义提示词；网络请求不占用数据库锁，写回保留期间新增的其他编辑。
 - Markdown 图片上传、原生读取、未引用图片清理，以及原生剪贴板和外部链接。图片限制为 8 MiB 的 PNG、JPEG、GIF 或 WebP。
@@ -54,7 +56,7 @@ node --test scripts/prepare-release.test.mjs
 ./scripts/test-desktop.ps1
 ```
 
-兼容检查在临时副本上执行，不修改输入数据库。本地业务测试覆盖事务回滚、标签和周期保留、搜索删除、时区、ISO 周、月边界及导出内容。
+兼容检查在临时副本上执行，不修改输入数据库。本地业务测试覆盖事务回滚、标签和周期保留、搜索删除、时区、ISO 周、月边界及导出内容。周视图的首周范围包含创建、更新、开始、完成及评论等历史时间，并按配置时区归属周；每日记录保留本地日历日期。日/周筛选按实际时间比较，兼容浏览器生成的毫秒时间和 RFC3339 时区偏移，开始边界计入、结束边界排除。
 
 `test-desktop.ps1` 使用独立目录和隐藏的真实 WebView，检查 Vue 挂载、窗口权限、IPC、CRUD、搜索、Vditor 和图片显示，报告保留在输出的证据目录。测试入口只在显式启用 `desktop-e2e` 时接受结果；正式构建不会加载测试脚本。
 
@@ -84,7 +86,9 @@ npm.cmd run tauri -- build
 
 默认验证 `rc.1 -> rc.2 -> rc.3` 连续两次升级，并检查无更新、错误签名、下载失败、更新清单失败时旧应用继续运行、原二进制不变。比较升级前后的业务 JSON 快照、设置和图片哈希。`-BuiltInstallers <证据目录>` 可复用同一脚本生成的三个签名测试包。
 
-GitHub Actions 的手动构建生成 Windows x64 安装器；未配置签名密钥时仅生成安装器，不生成升级清单。标签发布必须具有签名私钥、与 Cargo/Tauri 一致的 `v<SemVer>` 标签和非空的 `release-notes/<tag>.md`。流水线先上传安装器、`.sig` 和 `latest.json` 到草稿 Release，核对名称和大小后才公开，拒绝覆盖已公开版本。预发布不会变成稳定版更新源。
+GitHub Actions 在分支推送和 PR 时执行 Rust、前端、发布清单及真实 WebView/IPC 检查；手动构建生成 Windows x64 安装器，默认额外执行真实签名 NSIS 连续升级和失败恢复验收（可取消 `test_upgrade`）。标签发布强制执行升级验收，测试使用临时密钥，随后重新构建正式产品，仅选择产品名、版本和架构完全匹配的包。所有正式签名包在上传前使用应用内置公钥校验安装器及 `.sig`，防止 CI 配错私钥后发布无法升级的包。验收诊断单独保存为 Actions artifacts。
+
+在 GitHub 仓库 Settings → Secrets and variables → Actions 中添加 `TAURI_SIGNING_PRIVATE_KEY`，值为私钥文件的完整内容；`TAURI_SIGNING_PRIVATE_KEY_PASSWORD` 仅在私钥有密码时添加。终端用户电脑无需配置密钥。手动构建未配置密钥时仅生成安装器，不生成升级清单。标签发布必须具有签名私钥、与 Cargo/Tauri 一致的 `v<SemVer>` 标签和非空的 `release-notes/<tag>.md`。流水线先上传安装器、`.sig` 和 `latest.json` 到草稿 Release，核对名称和大小后才公开，拒绝覆盖已公开版本。预发布不会变成稳定版更新源。
 
 正式更新源为 GitHub 最新稳定 Release 的 `latest.json`。本地开发构建跳过检查，生产构建强制校验签名；校验或网络失败会保留当前安装。签名私钥必须长期保存，同一升级公钥下的后续版本应使用同一私钥。
 

@@ -1,8 +1,15 @@
-name: Release Builds
+name: Windows CI and Release
 
 on:
   workflow_dispatch:
+    inputs:
+      test_upgrade:
+        description: Run signed NSIS installation and restart acceptance tests
+        type: boolean
+        default: true
+  pull_request:
   push:
+    branches: ["**"]
     tags: ["v*"]
 
 permissions:
@@ -15,6 +22,7 @@ jobs:
   build:
     name: Build Windows amd64
     runs-on: windows-latest
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
@@ -65,7 +73,24 @@ jobs:
             ${{ runner.temp }}/TraceLog-desktop-smoke-*/data/desktop-smoke.json
             ${{ runner.temp }}/TraceLog-desktop-smoke-*/data/logs/*
           if-no-files-found: ignore
+      - name: Test signed NSIS upgrades and failure recovery
+        if: github.ref_type == 'tag' || (github.event_name == 'workflow_dispatch' && inputs.test_upgrade)
+        shell: pwsh
+        run: ./scripts/test-tauri-upgrade.ps1 -RunRoot "$env:RUNNER_TEMP/TraceLog-upgrade-$env:GITHUB_RUN_ID" -KeepArtifacts
+      - name: Preserve upgrade test diagnostics
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: TraceLog-upgrade-test-diagnostics
+          path: |
+            ${{ runner.temp }}/TraceLog-upgrade-*/result.json
+            ${{ runner.temp }}/TraceLog-upgrade-*/**/started-*.json
+            ${{ runner.temp }}/TraceLog-upgrade-*/**/checked-*.json
+            ${{ runner.temp }}/TraceLog-upgrade-*/**/failure.txt
+            ${{ runner.temp }}/TraceLog-upgrade-*/data/logs/*
+          if-no-files-found: ignore
       - name: Build Tauri NSIS installer
+        if: github.ref_type == 'tag' || github.event_name == 'workflow_dispatch'
         shell: pwsh
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -78,16 +103,27 @@ jobs:
           npm.cmd run tauri -- build --ci --config $config
           if ($LASTEXITCODE -ne 0) { throw 'Tauri build failed.' }
       - name: Prepare complete release assets
+        if: github.ref_type == 'tag' || github.event_name == 'workflow_dispatch'
         shell: pwsh
+        env:
+          HAS_SIGNING_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY != '' }}
         run: |
+          $config = Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json
+          $installer = "target/release/bundle/nsis/$($config.productName)_$($config.version)_x64-setup.exe"
+          if ($env:HAS_SIGNING_KEY -eq 'true') {
+            cargo run --locked --example verify-updater-signature -- $installer "$installer.sig"
+            if ($LASTEXITCODE -ne 0) { throw 'Installer signature does not match the embedded updater public key.' }
+          }
           if ($env:GITHUB_REF_TYPE -eq 'tag') {
             node scripts/prepare-release.mjs $env:GITHUB_REF_NAME $env:GITHUB_REPOSITORY
             if ($LASTEXITCODE -ne 0) { throw 'Release manifest generation failed.' }
           } else {
             New-Item -ItemType Directory -Path release | Out-Null
-            Copy-Item -Path target/release/bundle/nsis/*-setup.exe* -Destination release
+            Copy-Item -LiteralPath $installer -Destination release
+            if ($env:HAS_SIGNING_KEY -eq 'true') { Copy-Item -LiteralPath "$installer.sig" -Destination release }
           }
       - uses: actions/upload-artifact@v7
+        if: github.ref_type == 'tag' || github.event_name == 'workflow_dispatch'
         with:
           name: TraceLog-windows-amd64
           path: release/*
