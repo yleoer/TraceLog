@@ -123,7 +123,7 @@ impl Service {
         let encoded: String = url::form_urlencoded::byte_serialize(account.as_bytes()).collect();
         let mut worklogs = Vec::new();
         let mut offset = 0;
-        for page_number in 0..1000 {
+        loop {
             let page = self
                 .tempo_request(
                     settings,
@@ -149,9 +149,6 @@ impl Service {
             if text(&page["metadata"]["next"]).is_empty() || values.is_empty() {
                 break;
             }
-            if page_number == 999 {
-                return Err(AppError::Remote("Tempo 分页超过限制".into()));
-            }
             // 根据已返回条数推进，不访问远端给出的 URL，以防转发凭据。
             offset += values.len();
         }
@@ -165,7 +162,6 @@ impl Service {
         Ok(worklogs)
     }
     pub async fn time_week(&self, week: &str, force: bool) -> Result<TimeWeekView> {
-        let _write = self.time_write.lock().await;
         let start = views::week_start(week, self.config.timezone)?;
         let week = start.format("%G-W%V").to_string();
         let end = start + Duration::days(6);
@@ -231,7 +227,6 @@ impl Service {
         if !(1..=31).contains(&count) {
             return Err(invalid("工时日期范围必须为 1 到 31 天"));
         }
-        let _write = self.time_write.lock().await;
         let settings = self.tempo_settings().await?;
         let issue = self
             .jira_get(

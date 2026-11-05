@@ -31,7 +31,7 @@ local_command!(
     get_month_gantt(month: String) -> MonthGanttView,
     |db, svc| views::gantt(db, &month, svc.config.timezone)
 );
-local_command!(get_settings()->AppSettings,|_db,svc| Ok(settings::public(svc.settings.lock().map_err(|_|AppError::State)?.load()?)));
+local_command!(get_settings()->AppSettings,|_db,svc| Ok(settings::public(svc.load_settings()?)));
 macro_rules! remote_command {
     ($name:ident($($arg:ident:$kind:ty),*) -> $output:ty, |$svc:ident| $body:expr) => {
         #[tauri::command]
@@ -100,22 +100,6 @@ pub fn open_external(app: AppHandle, url: String) -> Result<()> {
         .map_err(|_| AppError::Remote("打开链接失败".into()))
 }
 
-#[tauri::command]
-pub fn desktop_smoke_report(
-    app: AppHandle,
-    state: State<'_, Arc<Service>>,
-    result: serde_json::Value,
-) -> Result<()> {
-    if !cfg!(feature = "desktop-e2e") {
-        return Err(tracelog::error::invalid("桌面验收功能未启用"));
-    }
-    std::fs::write(
-        state.config.data_dir.join("desktop-smoke.json"),
-        serde_json::to_vec_pretty(&result)?,
-    )?;
-    app.exit(0);
-    Ok(())
-}
 local_command!(list_issues(filter: ListFilter) -> Vec<Issue>, |db, svc| {
     local::list_issues(db, filter)
 });

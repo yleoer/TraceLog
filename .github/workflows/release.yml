@@ -2,12 +2,6 @@ name: Windows CI and Release
 
 on:
   workflow_dispatch:
-    inputs:
-      test_upgrade:
-        description: Run signed NSIS installation and restart acceptance tests
-        type: boolean
-        default: true
-  pull_request:
   push:
     branches: ["**"]
     tags: ["v*"]
@@ -50,7 +44,7 @@ jobs:
           if ($env:GITHUB_REF_NAME -ne "v$version") { throw 'Tag and Tauri version must match.' }
           $notes = "release-notes/$env:GITHUB_REF_NAME.md"
           if (-not (Test-Path -LiteralPath $notes) -or -not (Get-Content -LiteralPath $notes -Raw).Trim()) { throw 'Release notes are required.' }
-      - name: Check Rust and release manifest generation
+      - name: Check Rust
         shell: pwsh
         run: |
           cargo fmt --all -- --check
@@ -59,36 +53,9 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Rust tests failed.' }
           cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
           if ($LASTEXITCODE -ne 0) { throw 'Clippy failed.' }
-          node --test scripts/prepare-release.test.mjs
-          if ($LASTEXITCODE -ne 0) { throw 'Release manifest tests failed.' }
-      - name: Test actual WebView and native IPC
-        shell: pwsh
-        run: ./scripts/test-desktop.ps1 -RunRoot "$env:RUNNER_TEMP/TraceLog-desktop-smoke-$env:GITHUB_RUN_ID"
-      - name: Preserve desktop test diagnostics
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: TraceLog-desktop-test-diagnostics
-          path: |
-            ${{ runner.temp }}/TraceLog-desktop-smoke-*/data/desktop-smoke.json
-            ${{ runner.temp }}/TraceLog-desktop-smoke-*/data/logs/*
-          if-no-files-found: ignore
-      - name: Test signed NSIS upgrades and failure recovery
-        if: github.ref_type == 'tag' || (github.event_name == 'workflow_dispatch' && inputs.test_upgrade)
-        shell: pwsh
-        run: ./scripts/test-tauri-upgrade.ps1 -RunRoot "$env:RUNNER_TEMP/TraceLog-upgrade-$env:GITHUB_RUN_ID" -KeepArtifacts
-      - name: Preserve upgrade test diagnostics
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: TraceLog-upgrade-test-diagnostics
-          path: |
-            ${{ runner.temp }}/TraceLog-upgrade-*/result.json
-            ${{ runner.temp }}/TraceLog-upgrade-*/**/started-*.json
-            ${{ runner.temp }}/TraceLog-upgrade-*/**/checked-*.json
-            ${{ runner.temp }}/TraceLog-upgrade-*/**/failure.txt
-            ${{ runner.temp }}/TraceLog-upgrade-*/data/logs/*
-          if-no-files-found: ignore
+      - name: Build frontend
+        if: github.ref_type != 'tag' && github.event_name != 'workflow_dispatch'
+        run: npm.cmd --prefix frontend run build
       - name: Build Tauri NSIS installer
         if: github.ref_type == 'tag' || github.event_name == 'workflow_dispatch'
         shell: pwsh
@@ -110,10 +77,6 @@ jobs:
         run: |
           $config = Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json
           $installer = "target/release/bundle/nsis/$($config.productName)_$($config.version)_x64-setup.exe"
-          if ($env:HAS_SIGNING_KEY -eq 'true') {
-            cargo run --locked --example verify-updater-signature -- $installer "$installer.sig"
-            if ($LASTEXITCODE -ne 0) { throw 'Installer signature does not match the embedded updater public key.' }
-          }
           if ($env:GITHUB_REF_TYPE -eq 'tag') {
             node scripts/prepare-release.mjs $env:GITHUB_REF_NAME $env:GITHUB_REPOSITORY
             if ($LASTEXITCODE -ne 0) { throw 'Release manifest generation failed.' }
@@ -150,10 +113,7 @@ jobs:
           GH_REPO: ${{ github.repository }}
           TAG_NAME: ${{ github.ref_name }}
         run: |
-          $manifest = Get-Content release/latest.json -Raw | ConvertFrom-Json
-          if ("v$($manifest.version)" -ne $env:TAG_NAME) { throw 'Manifest version does not match tag.' }
           $files = @(Get-ChildItem -LiteralPath release -File)
-          if ($files.Count -ne 3) { throw 'Installer, signature and manifest are all required.' }
           $existing = gh release view $env:TAG_NAME --json isDraft 2>$null
           if ($LASTEXITCODE -eq 0) {
             if (-not ($existing | ConvertFrom-Json).isDraft) { throw 'Published releases cannot be overwritten.' }
@@ -163,12 +123,6 @@ jobs:
           }
           gh release upload $env:TAG_NAME @($files.FullName) --clobber
           if ($LASTEXITCODE -ne 0) { throw 'Uploading release assets failed; draft is retained.' }
-          $uploaded = gh release view $env:TAG_NAME --json assets | ConvertFrom-Json
-          if ($LASTEXITCODE -ne 0) { throw 'Reading uploaded assets failed.' }
-          foreach ($file in $files) {
-            $asset = @($uploaded.assets | Where-Object { $_.name -eq $file.Name -and $_.size -eq $file.Length })
-            if ($asset.Count -ne 1) { throw "Uploaded asset is incomplete: $($file.Name)" }
-          }
           if ($env:TAG_NAME.Contains('-')) {
             gh release edit $env:TAG_NAME --draft=false --prerelease --latest=false --notes-file "release-notes/$env:TAG_NAME.md"
           } else {

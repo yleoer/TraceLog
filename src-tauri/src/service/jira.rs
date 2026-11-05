@@ -48,8 +48,7 @@ impl Service {
         let settings = self.load_settings()?;
         let fields =
             remote::optional_json(self.jira_request(&settings, "/rest/api/3/field")?, "Jira")
-                .await?
-                .unwrap_or(Value::Null);
+                .await?;
         let custom = fields
             .as_array()
             .and_then(|items| {
@@ -73,7 +72,7 @@ impl Service {
             .await?;
         let mut histories = Vec::new();
         let mut start = 0;
-        for page_number in 0..1000 {
+        loop {
             let page = self
                 .jira_get(
                     &settings,
@@ -91,9 +90,6 @@ impl Service {
                 || page["total"].as_u64().is_some_and(|n| next >= n as usize)
             {
                 break;
-            }
-            if page_number == 999 {
-                return Err(AppError::Remote("Jira 历史分页超过限制".into()));
             }
             start = next;
         }

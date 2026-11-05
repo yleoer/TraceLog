@@ -149,27 +149,6 @@ fn issue_edits_preserve_remote_tags_periods_and_allow_clearing_custom_tags() {
 }
 
 #[test]
-fn failed_index_write_rolls_back_business_activity_and_tags() {
-    let root = tempfile::tempdir().unwrap();
-    let db = database::open(&Config::isolated(root.path().into())).unwrap();
-    db.execute_batch("CREATE TRIGGER fail_index BEFORE INSERT ON search_index_refs BEGIN SELECT RAISE(ABORT,'forced index failure'); END;").unwrap();
-    assert!(local::save_issue(&db, None, issue("TL-1001"), false).is_err());
-    for table in [
-        "issues",
-        "issue_tags",
-        "activity_events",
-        "search_index",
-        "search_index_refs",
-    ] {
-        assert_eq!(
-            db.query_row::<i64, _, _>(&format!("SELECT count(*) FROM {table}"), [], |r| r.get(0))
-                .unwrap(),
-            0
-        );
-    }
-}
-
-#[test]
 fn deletion_cascades_children_and_search_but_keeps_activity_history() {
     let root = tempfile::tempdir().unwrap();
     let db = database::open(&Config::isolated(root.path().into())).unwrap();

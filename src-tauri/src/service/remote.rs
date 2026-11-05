@@ -16,25 +16,16 @@ pub fn endpoint(base: &str, path: &str) -> Result<url::Url> {
 
 // 不返回远端响应体或包含凭据的请求 URL，避免密钥出现在界面及日志中。
 pub async fn json(request: reqwest::RequestBuilder, service: &str) -> Result<Value> {
-    receive(request, service, false)
-        .await?
-        .ok_or_else(|| AppError::Remote(format!("{service}响应为空")))
+    receive(request, service, false).await
 }
 
 // 可选元数据在非认证 HTTP 错误时缺省；连接、认证和响应格式错误仍需报告。
-pub async fn optional_json(
-    request: reqwest::RequestBuilder,
-    service: &str,
-) -> Result<Option<Value>> {
+pub async fn optional_json(request: reqwest::RequestBuilder, service: &str) -> Result<Value> {
     receive(request, service, true).await
 }
 
-async fn receive(
-    request: reqwest::RequestBuilder,
-    service: &str,
-    optional: bool,
-) -> Result<Option<Value>> {
-    let mut response = request.send().await.map_err(|e| {
+async fn receive(request: reqwest::RequestBuilder, service: &str, optional: bool) -> Result<Value> {
+    let response = request.send().await.map_err(|e| {
         AppError::Remote(format!(
             "{service}{}",
             if e.is_timeout() {
@@ -47,7 +38,7 @@ async fn receive(
     let status = response.status();
     if !status.is_success() {
         if optional && !matches!(status.as_u16(), 401 | 403) {
-            return Ok(None);
+            return Ok(Value::Null);
         }
         return Err(AppError::Remote(match status.as_u16() {
             401 | 403 => format!("{service}身份验证失败，请检查凭据与权限"),
@@ -56,19 +47,9 @@ async fn receive(
             _ => format!("{service}返回 HTTP {}", status.as_u16()),
         }));
     }
-    let mut bytes = Vec::new();
-    while let Some(chunk) = response
-        .chunk()
+    response
+        .json()
         .await
-        .map_err(|_| AppError::Remote(format!("{service}响应读取失败")))?
-    {
-        if bytes.len() + chunk.len() > 16 * 1024 * 1024 {
-            return Err(AppError::Remote(format!("{service}响应过大")));
-        }
-        bytes.extend_from_slice(&chunk);
-    }
-    serde_json::from_slice(&bytes)
-        .map(Some)
         .map_err(|_| AppError::Remote(format!("{service}响应不是有效 JSON")))
 }
 

@@ -72,34 +72,6 @@ impl SettingsStore {
         file.persist(&self.path).map_err(|e| e.error)?;
         Ok(())
     }
-
-    pub fn merge_changes(&self, before: &AppSettings, next: &AppSettings) -> Result<AppSettings> {
-        let mut latest = serde_json::to_value(self.load()?)?;
-        apply_changes(
-            &mut latest,
-            &serde_json::to_value(before)?,
-            &serde_json::to_value(next)?,
-        );
-        Ok(serde_json::from_value(latest)?)
-    }
-}
-
-fn apply_changes(
-    latest: &mut serde_json::Value,
-    before: &serde_json::Value,
-    next: &serde_json::Value,
-) {
-    if let (Some(latest), Some(before), Some(next)) =
-        (latest.as_object_mut(), before.as_object(), next.as_object())
-    {
-        for (key, value) in next {
-            if let (Some(latest), Some(before)) = (latest.get_mut(key), before.get(key)) {
-                apply_changes(latest, before, value);
-            }
-        }
-    } else if before != next {
-        *latest = next.clone();
-    }
 }
 
 pub fn public(mut settings: AppSettings) -> AppSettings {

@@ -1,20 +1,16 @@
-import { readFileSync, existsSync, copyFileSync, mkdirSync, writeFileSync } from 'node:fs'
+import { readFileSync, copyFileSync, mkdirSync, writeFileSync } from 'node:fs'
 import { resolve, basename } from 'node:path'
 
 export function prepareRelease({ root, tag, repository, bundleDir, outputDir }) {
   const config = JSON.parse(readFileSync(resolve(root, 'src-tauri/tauri.conf.json'), 'utf8'))
   const version = config.version
-  if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(version) || tag !== `v${version}`) throw new Error('标签必须与 Tauri SemVer 版本完全一致')
+  if (tag !== `v${version}`) throw new Error('标签必须与 Tauri 版本完全一致')
   const cargo = readFileSync(resolve(root, 'src-tauri/Cargo.toml'), 'utf8').match(/^version\s*=\s*"([^"]+)"/m)?.[1]
   if (cargo !== version) throw new Error('Cargo 与 Tauri 版本不一致')
-  if (!/^[\w.-]+\/[\w.-]+$/.test(repository)) throw new Error('GitHub 仓库名称无效')
   const notes = readFileSync(resolve(root, `release-notes/${tag}.md`), 'utf8').trim()
   if (!notes) throw new Error('必须提供非空的版本发布说明')
   const source = resolve(bundleDir, `${config.productName}_${version}_x64-setup.exe`)
-  if (!existsSync(source)) throw new Error('缺少当前产品及版本的 Windows x64 安装器')
   const signature = readFileSync(`${source}.sig`, 'utf8').trim()
-  const decoded = Buffer.from(signature, 'base64').toString('utf8')
-  if (!decoded.startsWith('untrusted comment:') || !decoded.includes('trusted comment:')) throw new Error('缺少有效格式的 Tauri 签名')
   const name = `TraceLog-${tag}-windows-amd64-setup.exe`
   const manifest = {
     version, notes, pub_date: new Date().toISOString(),

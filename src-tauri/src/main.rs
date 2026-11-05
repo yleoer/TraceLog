@@ -66,8 +66,7 @@ fn main() {
             commands::delete_uploaded_image,
             commands::cleanup_unused_uploaded_images,
             commands::copy_text,
-            commands::open_external,
-            commands::desktop_smoke_report
+            commands::open_external
         ])
         .setup(|app| {
             let config = Config::load();
@@ -76,9 +75,6 @@ fn main() {
                 error
             })?;
             app.manage(Arc::new(service));
-            #[cfg(feature = "update-e2e")]
-            updates::run_acceptance_probe(app.handle().clone());
-            let _ = app;
             Ok(())
         })
         .run(tauri::generate_context!())

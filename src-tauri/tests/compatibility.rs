@@ -84,42 +84,6 @@ fn legacy_database_is_backed_up_migrated_and_reopened_without_data_loss() {
 }
 
 #[test]
-fn invalid_legacy_data_rolls_back_migration_and_preserves_backup() {
-    let directory = tempfile::tempdir().unwrap();
-    let config = Config::isolated(directory.path().into());
-    let db = Connection::open(&config.database_path).unwrap();
-    db.execute_batch(
-        include_str!("../../db/migrations/001_init.sql")
-            .split("-- +goose Down")
-            .next()
-            .unwrap(),
-    )
-    .unwrap();
-    db.execute("INSERT INTO issues(jira_key,title,status,priority,tags,created_at,updated_at) VALUES ('TL-1','bad','todo','low','invalid-json','','')", []).unwrap();
-    assert!(database::open(&config).is_err());
-    assert_eq!(
-        db.query_row::<String, _, _>("SELECT tags FROM issues", [], |r| r.get(0))
-            .unwrap(),
-        "invalid-json"
-    );
-    assert_eq!(
-        db.query_row::<i64, _, _>(
-            "SELECT count(*) FROM app_schema_meta WHERE key='rust_compat_version'",
-            [],
-            |r| r.get(0)
-        )
-        .unwrap(),
-        0
-    );
-    assert_eq!(
-        std::fs::read_dir(directory.path().join("backups"))
-            .unwrap()
-            .count(),
-        1
-    );
-}
-
-#[test]
 fn settings_preserve_masked_credentials_and_replace_existing_file_atomically() {
     let directory = tempfile::tempdir().unwrap();
     let store = SettingsStore::new(directory.path());

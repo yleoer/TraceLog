@@ -88,27 +88,12 @@ function errorMessage(error: unknown) {
   return 'Request failed'
 }
 
-const pendingCalls = new Set<Promise<unknown>>()
-
 async function nativeCall<T>(call: () => Promise<T>) {
-  let pending: Promise<T> | undefined
   try {
-    pending = call()
-    pendingCalls.add(pending)
-    return await pending
+    return await call()
   } catch (error) {
     throw new Error(errorMessage(error))
-  } finally {
-    if (pending) pendingCalls.delete(pending)
   }
-}
-
-export async function waitForPendingCalls() {
-  while (pendingCalls.size) await Promise.allSettled([...pendingCalls])
-}
-
-export function reportDesktopSmokeTest(result: Record<string, unknown>) {
-  return invoke<void>('desktop_smoke_report', { result })
 }
 
 export const desktopWindow = {
@@ -117,7 +102,7 @@ export const desktopWindow = {
   toggleMaximise: () => getCurrentWindow().toggleMaximize(),
   isMaximised: () => getCurrentWindow().isMaximized(),
   startDragging: () => getCurrentWindow().startDragging(),
-  close: async () => { await waitForPendingCalls(); await getCurrentWindow().close() }
+  close: () => getCurrentWindow().close()
 }
 
 async function fileToDataURL(file: File) {
@@ -147,7 +132,7 @@ export const api = {
   logTempoTime: (request: LogTimeRequest) =>
     nativeCall(() => invoke('log_tempo_time', { request: request })) as Promise<LogTimeResult>,
   getUpdateInfo: () => nativeCall(() => invoke('get_update_info')) as Promise<UpdateInfo>,
-  installUpdate: async () => { await waitForPendingCalls(); await nativeCall(() => invoke<void>('install_update')) },
+  installUpdate: () => nativeCall(() => invoke<void>('install_update')),
   copyText: (text: string) => nativeCall(() => invoke<boolean>('copy_text', { text })),
   openExternal: (url: string) => nativeCall(() => invoke<void>('open_external', { url })),
   onUpdateProgress: (callback: (progress: { chunk: number; total?: number }) => void) => listen<{ chunk: number; total?: number }>('update-progress', event => callback(event.payload)),

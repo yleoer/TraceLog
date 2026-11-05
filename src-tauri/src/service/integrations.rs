@@ -11,10 +11,8 @@ use crate::{
 
 impl Service {
     pub async fn update_settings(&self, input: AppSettings) -> Result<AppSettings> {
-        let (existing, mut next) = {
-            let store = self.settings.lock().map_err(|_| AppError::State)?;
-            (store.load()?, store.merge_input(input)?)
-        };
+        let existing = self.load_settings()?;
+        let mut next = self.settings.merge_input(input)?;
         if !matches!(next.ai.provider.as_str(), "openai" | "deepseek") {
             return Err(invalid("AI 服务必须是 openai 或 deepseek"));
         }
@@ -23,31 +21,17 @@ impl Service {
         if validate_author {
             next.tempo.author_account_id = self.jira_author(&next).await?;
         }
-        let store = self.settings.lock().map_err(|_| AppError::State)?;
-        if validate_author && tempo_identity(&store.load()?) != tempo_identity(&existing) {
-            return Err(invalid("验证期间账户设置已变化，请重新保存"));
-        }
-        let merged = store.merge_changes(&existing, &next)?;
-        store.save(&merged)?;
-        Ok(settings::public(merged))
+        self.settings.save(&next)?;
+        Ok(settings::public(next))
     }
 
     pub async fn tempo_settings(&self) -> Result<AppSettings> {
-        let snapshot = self.load_settings()?;
-        if !snapshot.tempo.author_account_id.is_empty() {
-            return Ok(snapshot);
+        let mut settings = self.load_settings()?;
+        if settings.tempo.author_account_id.is_empty() {
+            settings.tempo.author_account_id = self.jira_author(&settings).await?;
+            self.settings.save(&settings)?;
         }
-        let author = self.jira_author(&snapshot).await?;
-        let store = self.settings.lock().map_err(|_| AppError::State)?;
-        let mut latest = store.load()?;
-        if tempo_identity(&latest) != tempo_identity(&snapshot) {
-            return Err(invalid("验证期间账户设置已变化，请重试"));
-        }
-        if latest.tempo.author_account_id.is_empty() {
-            latest.tempo.author_account_id = author;
-            store.save(&latest)?;
-        }
-        Ok(latest)
+        Ok(settings)
     }
 
     async fn chat(&self, settings: &AppSettings, prompt: &str, content: String) -> Result<String> {

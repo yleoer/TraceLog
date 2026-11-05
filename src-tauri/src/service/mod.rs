@@ -20,9 +20,8 @@ pub mod views;
 pub struct Service {
     pub config: Config,
     pub database: Mutex<Connection>,
-    pub settings: Mutex<SettingsStore>,
+    pub settings: SettingsStore,
     pub http: reqwest::Client,
-    pub time_write: tokio::sync::Mutex<()>,
 }
 
 impl Service {
@@ -32,7 +31,7 @@ impl Service {
         settings.load()?;
         Ok(Self {
             database: Mutex::new(database),
-            settings: Mutex::new(settings),
+            settings,
             config,
             http: reqwest::Client::builder()
                 .timeout(std::time::Duration::from_secs(60))
@@ -40,7 +39,6 @@ impl Service {
                 .redirect(reqwest::redirect::Policy::none())
                 .build()
                 .map_err(|_| AppError::Remote("无法初始化网络客户端".into()))?,
-            time_write: tokio::sync::Mutex::new(()),
         })
     }
 
@@ -50,7 +48,7 @@ impl Service {
     }
 
     pub fn load_settings(&self) -> Result<crate::models::AppSettings> {
-        self.settings.lock().map_err(|_| AppError::State)?.load()
+        self.settings.load()
     }
 }
 
